@@ -217,7 +217,7 @@ jobs:
           name: WindowsCrashDoctor-verified-${{ github.sha }}
           path: dist/release/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
 
   release-canary:
     name: Publish canary only after product gate
