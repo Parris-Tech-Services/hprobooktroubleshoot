@@ -9,13 +9,20 @@ on:
       - 'windows-crash-doctor/**'
       - '.github/workflows/windows-crash-doctor-desktop.yml'
       - 'INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'scripts/**'
+      - 'windows-crash-doctor/**'
+      - '.github/workflows/windows-crash-doctor-desktop.yml'
+      - 'INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-crash-doctor-product-gate
+  group: windows-crash-doctor-product-gate-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -90,6 +97,10 @@ jobs:
           $config.Output.Verbosity = 'Detailed'
           $result = Invoke-Pester -Configuration $config
           if ($result.FailedCount -gt 0) { throw "$($result.FailedCount) Pester test(s) failed." }
+
+      - name: Run installer and release integrity regression tests
+        shell: powershell
+        run: .\scripts\tests\installer-integrity-test.ps1
 
       - name: Run public evidence safety guard
         shell: powershell
@@ -186,6 +197,7 @@ jobs:
           }
 
           $version = Get-Content .\windows-crash-doctor\version.json -Raw | ConvertFrom-Json
+          $manifestPath = Join-Path $release 'release-manifest.json'
           [ordered]@{
             schemaVersion = 1
             channel = 'canary'
@@ -203,11 +215,20 @@ jobs:
               telemetryTests = 'passed'
               dumpTests = 'passed'
               integrationTests = 'passed'
+              installerIntegrityTests = 'passed'
               publicEvidenceGuard = 'passed'
               packagedExeSelfTest = 'passed'
             }
             assets = $assetRecords
-          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $release 'release-manifest.json') -Encoding utf8
+          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+
+          $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$manifestHash  release-manifest.json" | Set-Content -LiteralPath "$manifestPath.sha256" -Encoding ascii
+
+          .\scripts\Test-WindowsCrashDoctorReleaseBundle.ps1 `
+            -ReleaseDirectory $release `
+            -ExpectedSourceCommit $env:GITHUB_SHA `
+            -ExpectedRepository $env:GITHUB_REPOSITORY | Format-List | Out-String | Write-Host
 
           Get-ChildItem $release | Sort-Object Name | Format-Table Name, Length
 
@@ -227,25 +248,25 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
       - name: Download already-verified release candidate
         uses: actions/download-artifact@v4
         with:
           name: WindowsCrashDoctor-verified-${{ github.sha }}
           path: release
 
-      - name: Verify artifact hashes survived handoff
+      - name: Verify release candidate survived Actions artifact handoff
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          Get-ChildItem .\release -File -Filter '*.sha256' | ForEach-Object {
-            $checksum = Get-Content -LiteralPath $_.FullName -Raw
-            $match = [regex]::Match($checksum, '(?i)\b([0-9a-f]{64})\b\s+(.+)$')
-            if (-not $match.Success) { throw "Invalid checksum file: $($_.Name)" }
-            $asset = Join-Path $_.DirectoryName $match.Groups[2].Value.Trim()
-            if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { throw "Checksum target is missing: $asset" }
-            $actual = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $match.Groups[1].Value.ToLowerInvariant()) { throw "Artifact handoff checksum failed: $asset" }
-          }
+          .\scripts\Test-WindowsCrashDoctorReleaseBundle.ps1 `
+            -ReleaseDirectory .\release `
+            -ExpectedSourceCommit $env:GITHUB_SHA `
+            -ExpectedRepository $env:GITHUB_REPOSITORY | Format-List | Out-String | Write-Host
 
       - name: Publish rolling canary release
         shell: powershell
@@ -285,17 +306,21 @@ jobs:
           }
 
           $manifest = Get-Content .\release\release-manifest.json -Raw | ConvertFrom-Json
+          if ([string]$manifest.sourceCommit -ne $env:GITHUB_SHA) {
+            throw "Release manifest source commit '$($manifest.sourceCommit)' does not match workflow commit '$env:GITHUB_SHA'."
+          }
+
           $notes = @"
           **Canary / advanced preview — not a stable release.**
 
-          This artifact was published only after the repository product gate passed: PowerShell parsing, PSScriptAnalyzer, snapshot/telemetry/dump/integration regression tests, public-evidence guard, desktop compilation, packaged-engine extraction and an end-to-end `WindowsCrashDoctor.exe --self-test`.
+          This artifact was published only after the repository product gate passed: PowerShell parsing, PSScriptAnalyzer, snapshot/telemetry/dump/integration regression tests, installer/release-integrity tests, public-evidence guard, desktop compilation, packaged-engine extraction and an end-to-end `WindowsCrashDoctor.exe --self-test`.
 
           Source commit: `$env:GITHUB_SHA`
           Product: `$($manifest.productVersion)`
           Engine: `$($manifest.engineVersion)`
           Rule set: `$($manifest.ruleSetVersion)`
 
-          Installers verify SHA-256 before executing/installing downloaded release assets. The executable is still unsigned, so Windows SmartScreen may show **Unknown Publisher**.
+          The installer resolves one exact GitHub release id, downloads exact asset ids, and requires the executable, its checksum and the checked release manifest to agree before replacement. The executable is still unsigned, so Windows SmartScreen may show **Unknown Publisher**.
           "@
 
           $body = @{
@@ -306,9 +331,64 @@ jobs:
             draft = $false
             prerelease = $true
           } | ConvertTo-Json
-          Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases" -Method Post -ContentType 'application/json' -Body $body | Out-Null
+          $created = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases" -Method Post -ContentType 'application/json' -Body $body
+          if ([string]$created.target_commitish -ne $env:GITHUB_SHA) {
+            throw "GitHub created the canary against unexpected target '$($created.target_commitish)'."
+          }
 
           Get-ChildItem .\release -File | ForEach-Object {
             & gh release upload $tag $_.FullName --clobber
             if ($LASTEXITCODE -ne 0) { throw "Could not upload release asset: $($_.Name)" }
+          }
+
+      - name: Re-download and verify published GitHub release assets
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'windows-crash-doctor-desktop-latest'
+          $repo = $env:GITHUB_REPOSITORY
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+            'User-Agent' = 'windows-crash-doctor-release-verifier'
+          }
+          $release = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases/tags/$tag" -Method Get
+          if ([string]$release.target_commitish -ne $env:GITHUB_SHA) {
+            throw "Published canary target '$($release.target_commitish)' does not match '$env:GITHUB_SHA'."
+          }
+          if (-not [bool]$release.prerelease -or [bool]$release.draft) {
+            throw 'Published rolling canary does not have the expected prerelease/non-draft state.'
+          }
+
+          $downloadDir = Join-Path $env:RUNNER_TEMP ('wcd-published-' + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+          try {
+            foreach ($asset in @($release.assets)) {
+              $assetHeaders = @{
+                Authorization = "Bearer $env:GH_TOKEN"
+                Accept = 'application/octet-stream'
+                'X-GitHub-Api-Version' = '2022-11-28'
+                'User-Agent' = 'windows-crash-doctor-release-verifier'
+              }
+              $destination = Join-Path $downloadDir ([string]$asset.name)
+              Invoke-WebRequest -Headers $assetHeaders -Uri ([string]$asset.url) -OutFile $destination -UseBasicParsing
+
+              if ($asset.PSObject.Properties.Name -contains 'digest' -and [string]$asset.digest -match '^sha256:([0-9a-fA-F]{64})$') {
+                $actual = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($actual -ne $Matches[1].ToLowerInvariant()) {
+                  throw "GitHub asset digest mismatch after publication: $($asset.name)"
+                }
+              }
+            }
+
+            .\scripts\Test-WindowsCrashDoctorReleaseBundle.ps1 `
+              -ReleaseDirectory $downloadDir `
+              -ExpectedSourceCommit $env:GITHUB_SHA `
+              -ExpectedRepository $env:GITHUB_REPOSITORY | Format-List | Out-String | Write-Host
+          }
+          finally {
+            Remove-Item -LiteralPath $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
           }

@@ -102,6 +102,10 @@ jobs:
         shell: powershell
         run: .\windows-crash-doctor\tests\integration-self-test.ps1 -RepositoryMode
 
+      - name: Run installer and release integrity regression tests
+        shell: powershell
+        run: .\scripts\tests\installer-integrity-test.ps1
+
       - name: Run Pester integration tests
         shell: pwsh
         run: |
