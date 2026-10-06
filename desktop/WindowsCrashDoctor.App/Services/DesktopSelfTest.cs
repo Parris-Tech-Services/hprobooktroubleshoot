@@ -87,6 +87,33 @@ public static class DesktopSelfTest
                     throw new InvalidOperationException("Report coverage is not sourced from the canonical diagnostic registry.");
             }
 
+            Stage("network-doctor-selftest");
+            var networkPsi = new ProcessStartInfo(powershell)
+            {
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true
+            };
+            networkPsi.ArgumentList.Add("-NoProfile");
+            networkPsi.ArgumentList.Add("-ExecutionPolicy");
+            networkPsi.ArgumentList.Add("Bypass");
+            networkPsi.ArgumentList.Add("-File");
+            networkPsi.ArgumentList.Add(engine.NetworkDoctorPath);
+            networkPsi.ArgumentList.Add("-SelfTest");
+
+            using (var networkProcess = Process.Start(networkPsi) ?? throw new InvalidOperationException("Could not start Network Doctor self-test."))
+            {
+                var networkStdoutTask = networkProcess.StandardOutput.ReadToEndAsync();
+                var networkStderrTask = networkProcess.StandardError.ReadToEndAsync();
+                if (!networkProcess.WaitForExit(30_000))
+                {
+                    try { networkProcess.Kill(true); } catch { }
+                    throw new TimeoutException("Network Doctor self-test timed out.");
+                }
+                var networkStdout = networkStdoutTask.GetAwaiter().GetResult();
+                var networkStderr = networkStderrTask.GetAwaiter().GetResult();
+                if (networkProcess.ExitCode != 0 || !networkStdout.Contains("Network Doctor self-test passed.", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"Network Doctor self-test failed. Exit={networkProcess.ExitCode}. {networkStdout} {networkStderr}");
+            }
+
             Stage("runner-timeout");
             RunRunnerSelfTest();
             Stage("comparison");
