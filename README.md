@@ -17,6 +17,7 @@ The desktop preview includes:
 
 - a polished dashboard with live CPU/RAM/temperature cards;
 - one-click **Run Full Diagnosis**;
+- one-click **Network Doctor** for DHCP/APIPA, duplicate IP, DNS, HTTPS, Wi-Fi authentication, proxy/filter and browser-vs-network triage;
 - integrated **Network Doctor** for automatic DHCP/APIPA, duplicate-IP, DNS, HTTPS, proxy, VPN/filter and browser-vs-network triage;
 - ranked evidence cards with severity and recommended next action;
 - live diagnostic progress and logs;
@@ -86,7 +87,13 @@ Open an elevated Windows PowerShell prompt in a trusted local checkout of the re
   -OutputDirectory C:\Evidence\DumpReport
 ```
 
-### 4. Run regression tests
+### 4. Run Network Doctor
+
+```powershell
+.\windows-crash-doctor\NetworkDoctor.ps1
+```
+
+### 5. Run regression tests
 
 ```powershell
 .\windows-crash-doctor\tests\self-test.ps1 -RepositoryMode
@@ -132,6 +139,7 @@ It does **not** silently flash firmware, remove drivers, disable security, chang
 | [`windows-crash-doctor/README.md`](windows-crash-doctor/README.md) | Crash Doctor engine usage and behaviour |
 | [`docs/OPEN_SOURCE_INTEGRATIONS.md`](docs/OPEN_SOURCE_INTEGRATIONS.md) | Open-source provider architecture |
 | [`docs/WINDOWS_CRASH_DOCTOR_PLAN.md`](docs/WINDOWS_CRASH_DOCTOR_PLAN.md) | Product architecture and design |
+| [`docs/NETWORK_DOCTOR.md`](docs/NETWORK_DOCTOR.md) | Network Doctor architecture, checks, safety boundary and learned cases |
 | [`docs/GITHUB_BORROW_ROADMAP.md`](docs/GITHUB_BORROW_ROADMAP.md) | Adapt reusable diagnostics/reliability/security patterns from Josh's other repositories |
 | [`docs/COMPARABLE_TOOLS_RESEARCH.md`](docs/COMPARABLE_TOOLS_RESEARCH.md) | Comparator-tool research |
 | [`docs/ROADMAP_100.md`](docs/ROADMAP_100.md) | Canonical 100-item capability backlog |
