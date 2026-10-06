@@ -139,16 +139,8 @@ function Get-Classification {
         return [ordered]@{
             classification = 'No default gateway'
             severity = 'High'
-            summary = 'The active adapter has no usable IPv4 default gateway.'
+            summary = 'The active adapter has no usable IPv4 or IPv6 default gateway.'
             nextAction = 'Check DHCP/static configuration and compare the gateway with a working device on the same network.'
-        }
-    }
-    if (-not $InternetPing -and -not $Https) {
-        return [ordered]@{
-            classification = 'Upstream connectivity failure'
-            severity = 'High'
-            summary = 'The PC has local addressing but cannot reach a public IP or complete an HTTPS request.'
-            nextAction = 'Check gateway reachability, router/ISP state, VLAN/firewall path and whether other devices on the same network are affected.'
         }
     }
     if (-not $CurrentDns -and $DirectDns) {
@@ -165,6 +157,14 @@ function Get-Classification {
             severity = 'High'
             summary = 'Raw IP connectivity works but DNS resolution is failing through both the configured resolver and direct public resolvers.'
             nextAction = 'Check DNS interception, firewall/security policy, VPN/filter software and upstream DNS reachability.'
+        }
+    }
+    if (-not $InternetPing -and -not $Https) {
+        return [ordered]@{
+            classification = 'Upstream connectivity failure'
+            severity = 'High'
+            summary = 'The PC has local addressing but cannot reach a public IP or complete an HTTPS request.'
+            nextAction = 'Check gateway reachability, router/ISP state, VLAN/firewall path and whether other devices on the same network are affected.'
         }
     }
     if ($CurrentDns -and -not $Https) {
@@ -189,6 +189,7 @@ function Invoke-SelfTest {
         @{ name='apipa'; values=@($true,$true,$false,$false,$false,$false,$false,$false); expected='DHCP/addressing failure' },
         @{ name='duplicate'; values=@($true,$false,$true,$true,$true,$true,$true,$true); expected='Duplicate IP address conflict' },
         @{ name='dns'; values=@($true,$false,$false,$true,$true,$false,$true,$true); expected='DNS resolver/filter failure' },
+        @{ name='dns-with-ping-blocked'; values=@($true,$false,$false,$true,$false,$false,$true,$false); expected='DNS resolver/filter failure' },
         @{ name='https'; values=@($true,$false,$false,$true,$true,$true,$true,$false); expected='HTTPS/TLS/filtering failure' },
         @{ name='healthy'; values=@($true,$false,$false,$true,$true,$true,$true,$true); expected='Windows network path healthy' }
     )
@@ -208,9 +209,13 @@ if ($SelfTest) {
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
-$defaultRoute = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
+$defaultRoute4 = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
     Sort-Object RouteMetric, InterfaceMetric |
     Select-Object -First 1
+$defaultRoute6 = Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '::/0' -ErrorAction SilentlyContinue |
+    Sort-Object RouteMetric, InterfaceMetric |
+    Select-Object -First 1
+$defaultRoute = if ($defaultRoute4) { $defaultRoute4 } else { $defaultRoute6 }
 
 $activeAdapter = $null
 if ($defaultRoute) {
@@ -274,10 +279,16 @@ $activeAddresses = if ($activeAdapter) {
     @(Get-NetIPAddress -InterfaceIndex $activeAdapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.IPAddress -notlike '127.*' })
 } else { @() }
+$activeIpv6Addresses = if ($activeAdapter) {
+    @(Get-NetIPAddress -InterfaceIndex $activeAdapter.ifIndex -AddressFamily IPv6 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -ne '::1' -and $_.IPAddress -notlike 'fe80:*' })
+} else { @() }
 
 $hasApipa = [bool]($activeAddresses | Where-Object { $_.IPAddress -like '169.254.*' })
 $hasDuplicateAddress = [bool]($activeAddresses | Where-Object { [string]$_.AddressState -eq 'Duplicate' })
-$gateway = if ($activeConfig -and $activeConfig.IPv4DefaultGateway) { [string]$activeConfig.IPv4DefaultGateway.NextHop } else { $null }
+$gateway4 = if ($activeConfig -and $activeConfig.IPv4DefaultGateway) { [string]$activeConfig.IPv4DefaultGateway.NextHop } else { $null }
+$gateway6 = if ($activeConfig -and $activeConfig.IPv6DefaultGateway) { [string]$activeConfig.IPv6DefaultGateway.NextHop } else { $null }
+$gateway = if (-not [string]::IsNullOrWhiteSpace($gateway4)) { $gateway4 } else { $gateway6 }
 $hasGateway = -not [string]::IsNullOrWhiteSpace($gateway)
 
 $connectedStatus = if ($connected) { 'PASS' } else { 'FAIL' }
@@ -285,15 +296,17 @@ $connectedDetail = if ($connected) { "$($activeAdapter.Name) - $($activeAdapter.
 $checks.Add((New-Check 'Connected adapter' $connectedStatus $connectedDetail))
 
 if ($activeInterface) {
-    $ipv4Status = if ($hasApipa) { 'FAIL' } elseif ($activeAddresses.Count -gt 0) { 'PASS' } else { 'FAIL' }
+    $ipv4Status = if ($hasApipa) { 'FAIL' } elseif ($activeAddresses.Count -gt 0) { 'PASS' } elseif ($activeIpv6Addresses.Count -gt 0) { 'INFO' } else { 'FAIL' }
     $ipv4Detail = if ($hasApipa) {
         'APIPA 169.254.x.x detected.'
     } elseif ($activeAddresses.Count -gt 0) {
         (($activeAddresses | ForEach-Object IPAddress) -join ', ') + " | DHCP $($activeInterface.Dhcp)"
+    } elseif ($activeIpv6Addresses.Count -gt 0) {
+        'No usable IPv4 address, but a global IPv6 address is present.'
     } else {
-        'No usable IPv4 address found.'
+        'No usable IPv4 or global IPv6 address found.'
     }
-    $checks.Add((New-Check 'IPv4 configuration' $ipv4Status $ipv4Detail))
+    $checks.Add((New-Check 'IP configuration' $ipv4Status $ipv4Detail))
 }
 
 if ($hasGateway) {
@@ -304,7 +317,7 @@ if ($hasGateway) {
 }
 else {
     $gatewayPing = $false
-    $checks.Add((New-Check 'Default gateway' 'FAIL' 'No IPv4 default gateway is configured.'))
+    $checks.Add((New-Check 'Default gateway' 'FAIL' 'No IPv4 or IPv6 default gateway is configured.'))
 }
 
 $dhcpService = Get-Service Dhcp -ErrorAction SilentlyContinue
@@ -313,14 +326,20 @@ if ($dhcpService) {
     $checks.Add((New-Check 'DHCP Client service' $dhcpStatus "Status: $($dhcpService.Status)"))
 }
 
-$internetPing = Test-PingTarget '8.8.8.8'
+$internetPing4 = Test-PingTarget '8.8.8.8'
+$internetPing6 = Test-PingTarget '2001:4860:4860::8888'
+$internetPing = [bool]($internetPing4 -or $internetPing6)
 $internetStatus = if ($internetPing) { 'PASS' } else { 'WARN' }
-$internetDetail = if ($internetPing) { '8.8.8.8 ping passed' } else { '8.8.8.8 ping failed or was blocked' }
+$internetDetail = "IPv4 ping: $internetPing4; IPv6 ping: $internetPing6"
 $checks.Add((New-Check 'Public IP reachability' $internetStatus $internetDetail))
 
-$dnsServers = if ($activeAdapter) {
+$dnsServers4 = if ($activeAdapter) {
     @((Get-DnsClientServerAddress -InterfaceIndex $activeAdapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses)
 } else { @() }
+$dnsServers6 = if ($activeAdapter) {
+    @((Get-DnsClientServerAddress -InterfaceIndex $activeAdapter.ifIndex -AddressFamily IPv6 -ErrorAction SilentlyContinue).ServerAddresses)
+} else { @() }
+$dnsServers = @($dnsServers4 + $dnsServers6 | Where-Object { $_ } | Select-Object -Unique)
 
 $currentDns = Test-DnsTarget
 $currentDnsStatus = if ($currentDns.success) { 'PASS' } else { 'FAIL' }
@@ -329,9 +348,11 @@ $checks.Add((New-Check 'Configured DNS resolution' $currentDnsStatus $currentDns
 
 $directDns1 = Test-DnsTarget -Server '1.1.1.1'
 $directDns8 = Test-DnsTarget -Server '8.8.8.8'
-$directDns = [bool]($directDns1.success -or $directDns8.success)
+$directDns1v6 = Test-DnsTarget -Server '2606:4700:4700::1111'
+$directDns8v6 = Test-DnsTarget -Server '2001:4860:4860::8888'
+$directDns = [bool]($directDns1.success -or $directDns8.success -or $directDns1v6.success -or $directDns8v6.success)
 $directStatus = if ($directDns) { 'PASS' } else { 'WARN' }
-$checks.Add((New-Check 'Direct public DNS' $directStatus "1.1.1.1: $($directDns1.success); 8.8.8.8: $($directDns8.success)"))
+$checks.Add((New-Check 'Direct public DNS' $directStatus "Cloudflare v4: $($directDns1.success); Google v4: $($directDns8.success); Cloudflare v6: $($directDns1v6.success); Google v6: $($directDns8v6.success)"))
 
 $loopbackDns = @($dnsServers | Where-Object { $_ -eq '::1' -or $_ -like '127.*' })
 $dnsListeners = @()
@@ -584,7 +605,10 @@ if ($activeAdapter) {
         linkSpeed = [string]$activeAdapter.LinkSpeed
         dhcp = if ($activeInterface) { [string]$activeInterface.Dhcp } else { $null }
         ipv4 = @($activeAddresses | ForEach-Object IPAddress)
+        ipv6 = @($activeIpv6Addresses | ForEach-Object IPAddress)
         gateway = $gateway
+        gatewayIpv4 = $gateway4
+        gatewayIpv6 = $gateway6
         dnsServers = $dnsServers
     }
 }
@@ -608,11 +632,15 @@ $report = [ordered]@{
         currentResolver = $currentDns
         directCloudflare = $directDns1
         directGoogle = $directDns8
+        directCloudflareIpv6 = $directDns1v6
+        directGoogleIpv6 = $directDns8v6
         loopbackListeners = $dnsListeners
     }
     connectivity = [ordered]@{
         gatewayPing = $gatewayPing
         publicIpPing = $internetPing
+        publicIpv4Ping = $internetPing4
+        publicIpv6Ping = $internetPing6
         tcp443Github = $tcp443
         https = $httpsAny
         httpsIpv4 = $https4
