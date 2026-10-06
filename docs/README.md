@@ -63,3 +63,5 @@ The consolidated cross-chat history under `conversation/` is a safe synthesis ra
 - Link every public evidence claim to its provenance where practical.
 - Treat dump files, ETL traces, EVTX, WER reports and screenshots as potentially sensitive.
 - Never publish BitLocker recovery passwords, replacement recovery keys, credentials or unreviewed identifying logs.
+
+- [`NETWORK_DOCTOR.md`](NETWORK_DOCTOR.md) — Network Doctor architecture, diagnostic order, learned cases and safety boundary.
