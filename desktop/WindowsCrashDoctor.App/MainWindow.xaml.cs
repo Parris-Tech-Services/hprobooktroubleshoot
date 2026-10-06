@@ -424,9 +424,14 @@ public partial class MainWindow : Window
     {
         if (_networkRunning) return;
 
-        _engine.EnsureExtracted();
+        _networkRunning = true;
+        RunNetworkDoctorButton.IsEnabled = false;
+        RefreshNetworkButton.IsEnabled = false;
+        var refreshSucceeded = false;
+
         try
         {
+            _engine.EnsureExtracted();
             NetworkStatusText.Text = "Refreshing DHCP + DNS…";
             AppendNetworkLog("Refresh requested: flush DNS cache and renew the active DHCP lease only if that adapter already uses DHCP.");
 
@@ -455,13 +460,25 @@ public partial class MainWindow : Window
                     throw new InvalidOperationException($"Elevated network refresh exited with code {process.ExitCode}.");
             }
 
-            AppendNetworkLog("Refresh completed. Re-running Network Doctor.");
-            await RunNetworkDoctorAsync();
+            refreshSucceeded = true;
+            AppendNetworkLog("Refresh completed.");
         }
         catch (Exception ex)
         {
             NetworkStatusText.Text = "Refresh did not complete";
             AppendNetworkLog("REFRESH FAILED: " + ex.Message);
+        }
+        finally
+        {
+            _networkRunning = false;
+            RunNetworkDoctorButton.IsEnabled = true;
+            RefreshNetworkButton.IsEnabled = true;
+        }
+
+        if (refreshSucceeded)
+        {
+            AppendNetworkLog("Re-running Network Doctor after refresh.");
+            await RunNetworkDoctorAsync();
         }
     }
 
