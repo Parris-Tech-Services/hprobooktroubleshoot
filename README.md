@@ -17,6 +17,7 @@ The desktop preview includes:
 
 - a polished dashboard with live CPU/RAM/temperature cards;
 - one-click **Run Full Diagnosis**;
+- integrated **Network Doctor** for automatic DHCP/APIPA, duplicate-IP, DNS, HTTPS, proxy, VPN/filter and browser-vs-network triage;
 - ranked evidence cards with severity and recommended next action;
 - live diagnostic progress and logs;
 - optional 30-minute LibreHardwareMonitor deep sensor capture; normalization of that JSONL capture into the snapshot telemetry rules is still being integrated;
@@ -49,7 +50,7 @@ For a one-click preview install that creates a Desktop shortcut, download and do
 - synthetic Windows regression tests and PowerShell QA;
 - public-evidence/BitLocker recovery-key guard;
 - command-line launcher/install path;
-- native WPF desktop GUI and automated preview EXE release pipeline;
+- native WPF desktop GUI with Network Doctor and automated preview EXE release pipeline;
 - documented HP ProBook evidence and controlled test plan.
 
 The **[repository engineering audit](docs/REPOSITORY_AUDIT.md)** is the quality/risk source of truth and identifies the current release blockers. Planned capabilities are tracked in the **[100-item Windows Crash Doctor roadmap](docs/ROADMAP_100.md)**, while cross-repository engineering adaptations are tracked separately in the **[GitHub Borrow Roadmap](docs/GITHUB_BORROW_ROADMAP.md)**.
@@ -92,6 +93,7 @@ Open an elevated Windows PowerShell prompt in a trusted local checkout of the re
 .\windows-crash-doctor\tests\telemetry-self-test.ps1
 .\windows-crash-doctor\tests\dump-parser-test.ps1
 .\windows-crash-doctor\tests\integration-self-test.ps1 -RepositoryMode
+.\windows-crash-doctor\NetworkDoctor.ps1 -SelfTest
 ```
 
 Treat the required workflow as the product-health signal; the presence of a built EXE by itself does not prove the engine and desktop are release-ready.
@@ -113,7 +115,8 @@ The rule engine understands evidence relevant to this case, including:
 - Kernel-Power Event 41;
 - volmgr Event 161;
 - HWiNFO-style sensor CSV telemetry and sustained memory pressure;
-- current-window System Power Report abnormal-shutdown evidence.
+- current-window System Power Report abnormal-shutdown evidence;
+- network path evidence including active adapter/DHCP state, APIPA, duplicate-IP Event 4199 history, ARP/neighbour patterns, gateway reachability, configured-vs-direct DNS, loopback DNS/filter ownership, HTTPS over IPv4/IPv6, TCP 443, proxy/hosts settings, VPN/filter services and stale static profiles.
 
 Each finding keeps **severity**, **confidence**, **evidence**, **interpretation** and **next step** separate.
 
