@@ -9,6 +9,14 @@ on:
       - 'windows-crash-doctor/**'
       - '.github/workflows/windows-crash-doctor-desktop.yml'
       - 'INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'scripts/**'
+      - 'windows-crash-doctor/**'
+      - 'docs/**'
+      - '.github/workflows/windows-crash-doctor-desktop.yml'
   workflow_dispatch:
 
 permissions:
