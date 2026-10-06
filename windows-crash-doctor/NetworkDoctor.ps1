@@ -451,10 +451,18 @@ else {
 
 $winHttpProxy = (& netsh.exe winhttp show proxy 2>&1 | Out-String).Trim()
 $internetSettings = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+$proxyEnable = $false
+$proxyServer = $null
+$autoConfigUrl = $null
+if ($internetSettings) {
+    if ($internetSettings.PSObject.Properties['ProxyEnable']) { $proxyEnable = [bool]$internetSettings.ProxyEnable }
+    if ($internetSettings.PSObject.Properties['ProxyServer']) { $proxyServer = $internetSettings.ProxyServer }
+    if ($internetSettings.PSObject.Properties['AutoConfigURL']) { $autoConfigUrl = $internetSettings.AutoConfigURL }
+}
 $userProxy = [ordered]@{
-    enabled = if ($internetSettings) { [bool]$internetSettings.ProxyEnable } else { $false }
-    server = if ($internetSettings) { $internetSettings.ProxyServer } else { $null }
-    autoConfigUrl = if ($internetSettings) { $internetSettings.AutoConfigURL } else { $null }
+    enabled = $proxyEnable
+    server = $proxyServer
+    autoConfigUrl = $autoConfigUrl
 }
 $proxyConfigured = ($winHttpProxy -notmatch 'Direct access') -or $userProxy.enabled -or -not [string]::IsNullOrWhiteSpace([string]$userProxy.autoConfigUrl)
 $proxyStatus = if ($proxyConfigured) { 'INFO' } else { 'PASS' }
@@ -486,6 +494,16 @@ foreach ($svc in @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
     }
 }
 $checks.Add((New-Check 'VPN/DNS/filter services' 'INFO' "$($interestingServices.Count) potentially network-relevant service(s) detected." $interestingServices))
+
+$otherApipa = @(
+    $adapterRecords | Where-Object {
+        $_.interfaceIndex -ne $(if ($activeAdapter) { $activeAdapter.ifIndex } else { -1 }) -and
+        @($_.ipv4 | Where-Object { $_.address -like '169.254.*' }).Count -gt 0
+    }
+)
+if ($otherApipa.Count -gt 0) {
+    $checks.Add((New-Check 'Other APIPA adapters' 'INFO' "$($otherApipa.Count) non-primary adapter(s) have 169.254.x.x addresses. This can matter when a VPN/virtual adapter also influences DNS or routes." $otherApipa))
+}
 
 $manualProfiles = @()
 foreach ($record in $adapterRecords) {
