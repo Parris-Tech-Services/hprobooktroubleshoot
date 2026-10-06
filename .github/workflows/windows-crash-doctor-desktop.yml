@@ -81,10 +81,6 @@ jobs:
           .\windows-crash-doctor\tests\telemetry-self-test.ps1
           .\windows-crash-doctor\tests\integration-self-test.ps1 -RepositoryMode
 
-      - name: Run Network Doctor regression test
-        shell: powershell
-        run: .\windows-crash-doctor\NetworkDoctor.ps1 -SelfTest
-
       - name: Run Network Doctor classification self-test
         shell: powershell
         run: .\windows-crash-doctor\NetworkDoctor.ps1 -SelfTest
