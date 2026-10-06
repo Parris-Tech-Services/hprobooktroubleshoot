@@ -77,6 +77,10 @@ jobs:
         shell: powershell
         run: .\windows-crash-doctor\NetworkDoctor.ps1 -SelfTest
 
+      - name: Run Network Doctor classification self-test
+        shell: powershell
+        run: .\windows-crash-doctor\NetworkDoctor.ps1 -SelfTest
+
       - name: Run native dump regression tests
         shell: powershell
         run: |
