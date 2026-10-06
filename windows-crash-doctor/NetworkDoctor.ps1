@@ -540,6 +540,10 @@ $wlanInterfacesText = ''
 try { $wlanInterfacesText = (& netsh.exe wlan show interfaces 2>&1 | Out-String).Trim() } catch { }
 $wlanProfilesText = ''
 try { $wlanProfilesText = (& netsh.exe wlan show profiles 2>&1 | Out-String).Trim() } catch { }
+$wlanNetworksText = ''
+try { $wlanNetworksText = (& netsh.exe wlan show networks mode=bssid 2>&1 | Out-String).Trim() } catch { }
+$wlanDriversText = ''
+try { $wlanDriversText = (& netsh.exe wlan show drivers 2>&1 | Out-String).Trim() } catch { }
 
 $wlanEvents = @()
 $wlanLog = 'Microsoft-Windows-WLAN-AutoConfig/Operational'
@@ -654,10 +658,14 @@ $report = [ordered]@{
     wifi = [ordered]@{
         interfaces = $wlanInterfacesText
         profiles = $wlanProfilesText
+        visibleNetworks = $wlanNetworksText
+        drivers = $wlanDriversText
         recentEvents = $wlanEvents
     }
     connectivityProbe = $connectivityProbe
     winsockProviders = $winsockProviders
+    timeSync = $timeSyncText
+    defaultRoutes = $defaultRoutes
 }
 
 $jsonPath = Join-Path $runFolder 'network-doctor-report.json'
@@ -837,6 +845,28 @@ Write-Output "REPORT_MD: $mdPath"
     )
 }
 $checks.Add((New-Check 'Winsock/LSP inventory' 'INFO' 'Captured Winsock provider metadata for comparison. Network Doctor does not automatically reset Winsock because that is a broad remediation step.' $winsockProviders))
+
+
+$timeSyncText = ''
+try { $timeSyncText = (& w32tm.exe /query /status 2>&1 | Out-String).Trim() } catch { }
+$clockStatus = 'INFO'
+$clockDetail = 'Captured Windows Time status for TLS/certificate troubleshooting.'
+if ($timeSyncText -match '(?i)The service has not been started|error|unsynchronized|free-running') {
+    $clockStatus = 'WARN'
+    $clockDetail = 'Windows Time reports a possible synchronisation problem. A materially wrong clock can break TLS/certificate validation.'
+}
+$checks.Add((New-Check 'System time synchronisation' $clockStatus $clockDetail $timeSyncText))
+
+$defaultRoutes = @(
+    Get-NetRoute -DestinationPrefix '0.0.0.0/0','::/0' -ErrorAction SilentlyContinue |
+    Sort-Object AddressFamily, RouteMetric, InterfaceMetric |
+    Select-Object AddressFamily, InterfaceIndex, NextHop, RouteMetric, InterfaceMetric, State, PolicyStore
+)
+if ($defaultRoutes.Count -gt 2) {
+    $checks.Add((New-Check 'Competing default routes' 'INFO' "$($defaultRoutes.Count) IPv4/IPv6 default routes are present. VPNs and virtual adapters can legitimately add routes, but metrics should be reviewed if traffic takes the wrong path." $defaultRoutes))
+} else {
+    $checks.Add((New-Check 'Default-route inventory' 'INFO' "$($defaultRoutes.Count) default route(s) captured." $defaultRoutes))
+}
 
 $browserProcesses = @(Get-Process chrome,msedge,firefox -ErrorAction SilentlyContinue | Select-Object ProcessName,Id,Path)
 if ($httpsAny.success -and $currentDns.success) {
