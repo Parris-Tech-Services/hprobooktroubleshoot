@@ -163,6 +163,8 @@
                                         <TextBlock Text="✓ HTTPS, IPv4/IPv6 and TCP 443" Margin="0,4"/>
                                         <TextBlock Text="✓ WinHTTP/user proxy and hosts overrides" Margin="0,4"/>
                                         <TextBlock Text="✓ VPN/DNS/filter services and stale static profiles" Margin="0,4"/>
+                                        <TextBlock Text="✓ Wi-Fi SSIDs, profiles, drivers and auth events" Margin="0,4"/>
+                                        <TextBlock Text="✓ Captive portal, default routes and time sync" Margin="0,4"/>
                                         <Border Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="12" Margin="0,14,0,0">
                                             <TextBlock Text="Diagnosis is read-only. Refresh DHCP + DNS is a separate explicit action and does not force DNS servers, reset Winsock, disable security software or assign a static IP." Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" FontSize="11"/>
                                         </Border>
