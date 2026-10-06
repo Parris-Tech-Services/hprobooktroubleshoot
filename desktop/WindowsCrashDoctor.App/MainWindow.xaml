@@ -34,6 +34,7 @@
                     <Button Style="{StaticResource NavButton}" Click="SensorsNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="⌁" Margin="0,0,11,0"/><TextBlock Text="Live Sensors"/></StackPanel></Button>
                     <Button Style="{StaticResource NavButton}" Click="HistoryNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="◷" Margin="0,0,11,0"/><TextBlock Text="History"/></StackPanel></Button>
                     <Button Style="{StaticResource NavButton}" Click="IntegrationsNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="◇" Margin="0,0,11,0"/><TextBlock Text="Integrations"/></StackPanel></Button>
+                    <Button Style="{StaticResource NavButton}" Click="NetworkNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="⌁" Margin="0,0,11,0"/><TextBlock Text="Network Doctor"/></StackPanel></Button>
                     <Button Style="{StaticResource NavButton}" Click="SettingsNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="⚙" Margin="0,0,11,0"/><TextBlock Text="Settings"/></StackPanel></Button>
                 </StackPanel>
 
@@ -119,7 +120,68 @@
                 <TabItem>
                     <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="30,26,30,35"><Border Style="{StaticResource Card}" Margin="0,0,0,18"><StackPanel><TextBlock Text="Appearance" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Use a light or dark workspace. Diagnostic evidence is unaffected." Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,12"/><Button Style="{StaticResource SecondaryButton}" Click="ThemeButton_Click" Content="Toggle light / dark mode" HorizontalAlignment="Left"/></StackPanel></Border><Border Style="{StaticResource Card}" Margin="0,0,0,18"><StackPanel><TextBlock Text="Evidence and privacy" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Diagnostic folders can contain usernames, hardware identifiers, network details, EVTX records and other sensitive material. Crash Doctor stores them locally and never uploads them automatically." Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,12"/><StackPanel Orientation="Horizontal"><Button Style="{StaticResource SecondaryButton}" Click="OpenResultsFolder_Click" Content="Open results folder" Margin="0,0,10,0"/><Button Style="{StaticResource SecondaryButton}" Click="ExportPrivacyReviewedBundle_Click" Content="Export privacy-reviewed bundle"/></StackPanel></StackPanel></Border><Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="About" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Windows Crash Doctor Desktop Preview 0.2.0" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock Text="Built around an evidence-first rule engine: observation, inherited image history, interpretation and causality stay separate." Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,5,0,0"/></StackPanel></Border></StackPanel></ScrollViewer>
                 </TabItem>
-            </TabControl>
+            
+                <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="30,26,30,35">
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Network Doctor" FontSize="20" FontWeight="SemiBold"/>
+                                        <TextBlock Text="One-click evidence-first triage for DHCP, duplicate IPs, DNS, HTTPS, proxy, VPN/filter services and browser-vs-network failures." Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,5,0,12" MaxWidth="720"/>
+                                        <ProgressBar x:Name="NetworkProgress" Height="8" Minimum="0" Maximum="100" Value="0" Foreground="{DynamicResource Accent}" Background="{DynamicResource AccentSoft}" BorderThickness="0"/>
+                                        <TextBlock x:Name="NetworkStatusText" Text="Ready" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0,0,0">
+                                        <Button x:Name="OpenNetworkReportButton" Style="{StaticResource SecondaryButton}" Click="OpenNetworkReport_Click" Content="Open report" Margin="0,0,10,0" IsEnabled="False"/>
+                                        <Button x:Name="RefreshNetworkButton" Style="{StaticResource SecondaryButton}" Click="RefreshNetwork_Click" Content="Refresh DHCP + DNS" Margin="0,0,10,0"/>
+                                        <Button x:Name="RunNetworkDoctorButton" Style="{StaticResource PrimaryButton}" Click="RunNetworkDoctor_Click" Content="Run Network Doctor"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Grid Margin="0,0,0,18">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="0.85*"/></Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,9,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Diagnosis" FontSize="17" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="NetworkSummaryText" Text="Run Network Doctor to automatically work through the same checks used in manual troubleshooting." FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                                        <TextBlock Text="Recommended next action" Foreground="{DynamicResource SecondaryText}" FontSize="12" Margin="0,18,0,0"/>
+                                        <TextBlock x:Name="NetworkNextStepText" Text="No diagnosis yet." Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource Card}" Margin="9,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="What it checks" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                        <TextBlock Text="✓ Active adapter, link speed and IPv4 state" Margin="0,4"/>
+                                        <TextBlock Text="✓ DHCP vs APIPA (169.254.x.x)" Margin="0,4"/>
+                                        <TextBlock Text="✓ Duplicate-IP Event 4199 and MAC patterns" Margin="0,4"/>
+                                        <TextBlock Text="✓ Gateway and public-IP reachability" Margin="0,4"/>
+                                        <TextBlock Text="✓ Configured DNS vs direct public DNS" Margin="0,4"/>
+                                        <TextBlock Text="✓ Local loopback DNS/filter listener ownership" Margin="0,4"/>
+                                        <TextBlock Text="✓ HTTPS, IPv4/IPv6 and TCP 443" Margin="0,4"/>
+                                        <TextBlock Text="✓ WinHTTP/user proxy and hosts overrides" Margin="0,4"/>
+                                        <TextBlock Text="✓ VPN/DNS/filter services and stale static profiles" Margin="0,4"/>
+                                        <Border Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="12" Margin="0,14,0,0">
+                                            <TextBlock Text="Diagnosis is read-only. Refresh DHCP + DNS is a separate explicit action and does not force DNS servers, reset Winsock, disable security software or assign a static IP." Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" FontSize="11"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Border Style="{StaticResource Card}">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Top" Text="Network diagnostic log" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" Height="240">
+                                        <TextBox x:Name="NetworkLog" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource SecondaryText}" FontFamily="Consolas" FontSize="11"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+</TabControl>
         </Grid>
     </Grid>
 </Window>
