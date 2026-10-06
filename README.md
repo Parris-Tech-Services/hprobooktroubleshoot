@@ -18,7 +18,6 @@ The desktop preview includes:
 - a polished dashboard with live CPU/RAM/temperature cards;
 - one-click **Run Full Diagnosis**;
 - one-click **Network Doctor** for DHCP/APIPA, duplicate IP, DNS, HTTPS, Wi-Fi authentication, proxy/filter and browser-vs-network triage;
-- integrated **Network Doctor** for automatic DHCP/APIPA, duplicate-IP, DNS, HTTPS, proxy, VPN/filter and browser-vs-network triage;
 - ranked evidence cards with severity and recommended next action;
 - live diagnostic progress and logs;
 - optional 30-minute LibreHardwareMonitor deep sensor capture; normalization of that JSONL capture into the snapshot telemetry rules is still being integrated;
