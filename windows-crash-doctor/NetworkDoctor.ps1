@@ -243,7 +243,7 @@ if ($Mode -eq 'Refresh') {
 $checks = New-Object System.Collections.Generic.List[object]
 $adapterRecords = @()
 
-foreach ($adapter in @(Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue)) {
+foreach ($adapter in @(Get-NetAdapter -Name '*' -ErrorAction SilentlyContinue)) {
     $ipv4 = @(Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.IPAddress -notlike '127.*' })
     $iface = Get-NetIPInterface -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
@@ -511,6 +511,308 @@ foreach ($record in $adapterRecords) {
 }
 if ($manualProfiles.Count -gt 0) {
     $checks.Add((New-Check 'Manual/static IPv4 profiles' 'INFO' "$($manualProfiles.Count) adapter(s) have DHCP disabled and an IPv4 address. Stale direct-device/NAS profiles can cause DNS or routing confusion when reused." $manualProfiles))
+}
+
+
+$wifiAdapters = @($adapterRecords | Where-Object { $_.description -match '(?i)wi-?fi|wireless|802\.11' })
+$wlanInterfacesText = ''
+try { $wlanInterfacesText = (& netsh.exe wlan show interfaces 2>&1 | Out-String).Trim() } catch { }
+$wlanProfilesText = ''
+try { $wlanProfilesText = (& netsh.exe wlan show profiles 2>&1 | Out-String).Trim() } catch { }
+
+$wlanEvents = @()
+$wlanLog = 'Microsoft-Windows-WLAN-AutoConfig/Operational'
+try {
+    foreach ($evt in @(Get-WinEvent -FilterHashtable @{ LogName=$wlanLog; StartTime=(Get-Date).AddDays(-7) } -ErrorAction Stop | Select-Object -First 80)) {
+        $wlanEvents += [ordered]@{
+            timeCreated = $evt.TimeCreated.ToString('o')
+            id = $evt.Id
+            level = $evt.LevelDisplayName
+            message = $evt.Message
+        }
+    }
+}
+catch { }
+
+if ($wifiAdapters.Count -gt 0) {
+    $authEvidence = @($wlanEvents | Where-Object { $_.message -match '(?i)pre-shared key|PSK|password|passphrase|authentication|802\.1x|certificate|cancelled' })
+    $pskMismatch = @($wlanEvents | Where-Object { $_.message -match '(?i)PSK.*mismatch|pre-shared key.*(incorrect|mismatch)|incorrect.*(password|passphrase|key)' })
+    if ($pskMismatch.Count -gt 0) {
+        $checks.Add((New-Check 'Wi-Fi authentication history' 'WARN' 'WLAN AutoConfig history contains evidence consistent with an incorrect Wi-Fi pre-shared key/passphrase. Re-enter the known-correct network password before resetting the TCP/IP stack or reinstalling drivers.' $pskMismatch))
+    }
+    elseif ($authEvidence.Count -gt 0) {
+        $checks.Add((New-Check 'Wi-Fi authentication history' 'INFO' "$($authEvidence.Count) recent WLAN authentication/profile event(s) found. Preserve event IDs/timestamps before changing the profile or driver." $authEvidence))
+    }
+    else {
+        $checks.Add((New-Check 'Wi-Fi authentication history' 'INFO' 'No obvious recent PSK/passphrase/authentication failure was identified in WLAN AutoConfig history.'))
+    }
+}
+
+$connectivityProbe = [ordered]@{ success=$false; statusCode=$null; body=$null; error=$null }
+try {
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        $writeOut = [Environment]::NewLine + '%{http_code}'
+        $probeOutput = & $curl.Source -sS -L --max-time 8 -w $writeOut 'http://www.msftconnecttest.com/connecttest.txt' 2>&1
+        $probeText = ($probeOutput | Out-String).Trim()
+        $parts = $probeText -split '\r?\n'
+        $last = if ($parts.Count -gt 0) { $parts[-1] } else { '' }
+        $body = if ($parts.Count -gt 1) { ($parts[0..($parts.Count-2)] -join [Environment]::NewLine).Trim() } else { '' }
+        $connectivityProbe.statusCode = if ($last -match '^\d{3}    HasConnectedAdapter = $connected
+    HasApipa = $hasApipa
+    HasDuplicateAddress = $hasDuplicateAddress
+    HasGateway = $hasGateway
+    InternetPing = $internetPing
+    CurrentDns = [bool]$currentDns.success
+    DirectDns = $directDns
+    Https = [bool]$httpsAny.success
+}
+$classification = Get-Classification @classArgs
+
+$timestamp = Get-Date
+$runFolder = Join-Path $OutputDirectory ("Network-{0}" -f $timestamp.ToString('yyyyMMdd-HHmmss'))
+New-Item -ItemType Directory -Path $runFolder -Force | Out-Null
+
+$activeRecord = $null
+if ($activeAdapter) {
+    $activeRecord = [ordered]@{
+        name = $activeAdapter.Name
+        description = $activeAdapter.InterfaceDescription
+        interfaceIndex = $activeAdapter.ifIndex
+        macAddress = $activeAdapter.MacAddress
+        status = [string]$activeAdapter.Status
+        linkSpeed = [string]$activeAdapter.LinkSpeed
+        dhcp = if ($activeInterface) { [string]$activeInterface.Dhcp } else { $null }
+        ipv4 = @($activeAddresses | ForEach-Object IPAddress)
+        gateway = $gateway
+        dnsServers = $dnsServers
+    }
+}
+
+$report = [ordered]@{
+    schemaVersion = 1
+    generatedAt = $timestamp.ToString('o')
+    computerName = $env:COMPUTERNAME
+    mode = 'Diagnose'
+    classification = $classification.classification
+    severity = $classification.severity
+    summary = $classification.summary
+    nextAction = $classification.nextAction
+    activeAdapter = $activeRecord
+    checks = $checks
+    duplicateAddressConflicts = $duplicateEvents
+    neighbors = $neighbors
+    adapters = $adapterRecords
+    dns = [ordered]@{
+        configuredServers = $dnsServers
+        currentResolver = $currentDns
+        directCloudflare = $directDns1
+        directGoogle = $directDns8
+        loopbackListeners = $dnsListeners
+    }
+    connectivity = [ordered]@{
+        gatewayPing = $gatewayPing
+        publicIpPing = $internetPing
+        tcp443Github = $tcp443
+        https = $httpsAny
+        httpsIpv4 = $https4
+        httpsIpv6 = $https6
+    }
+    proxy = [ordered]@{
+        winHttp = $winHttpProxy
+        user = $userProxy
+    }
+    networkRelevantServices = $interestingServices
+    wifi = [ordered]@{
+        interfaces = $wlanInterfacesText
+        profiles = $wlanProfilesText
+        recentEvents = $wlanEvents
+    }
+    connectivityProbe = $connectivityProbe
+    winsockProviders = $winsockProviders
+}
+
+$jsonPath = Join-Path $runFolder 'network-doctor-report.json'
+$mdPath = Join-Path $runFolder 'network-doctor-report.md'
+$report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
+
+$md = New-Object System.Collections.Generic.List[string]
+$md.Add('# Windows Crash Doctor - Network Doctor report')
+$md.Add('')
+$md.Add("Generated: **$($report.generatedAt)**")
+$md.Add("Computer: **$($report.computerName)**")
+$md.Add('')
+$md.Add('## Diagnosis')
+$md.Add('')
+$md.Add("**$($report.classification)**")
+$md.Add('')
+$md.Add($report.summary)
+$md.Add('')
+$md.Add("**Next action:** $($report.nextAction)")
+$md.Add('')
+$md.Add('## Checks')
+$md.Add('')
+foreach ($check in $checks) {
+    $md.Add("- **[$($check.status)] $($check.name):** $($check.detail)")
+}
+if ($duplicateEvents.Count -gt 0) {
+    $md.Add('')
+    $md.Add('## Recent duplicate-address conflicts')
+    $md.Add('')
+    foreach ($evt in $duplicateEvents | Select-Object -First 15) {
+        $md.Add("- $($evt.timeCreated): IP $($evt.ipAddress) from MAC $($evt.macAddress)")
+    }
+}
+$md.Add('')
+$md.Add('## Safety boundary')
+$md.Add('')
+$md.Add('Network Doctor diagnoses by default. It does not silently change DNS servers, force DHCP, reset Winsock/TCP-IP, disable security software, alter VPNs, or assign a static IP.')
+$md | Set-Content -LiteralPath $mdPath -Encoding UTF8
+
+Write-Output "CLASSIFICATION: $($report.classification)"
+Write-Output "SUMMARY: $($report.summary)"
+Write-Output "NEXT: $($report.nextAction)"
+Write-Output "REPORT_JSON: $jsonPath"
+Write-Output "REPORT_MD: $mdPath"
+) { [int]$last } else { $null }
+        $connectivityProbe.body = $body
+        $connectivityProbe.success = ($connectivityProbe.statusCode -eq 200 -and $body -match 'Microsoft Connect Test')
+    }
+}
+catch {
+    $connectivityProbe.error = $_.Exception.Message
+}
+if ($connectivityProbe.success) {
+    $checks.Add((New-Check 'Captive portal / connectivity probe' 'PASS' 'Windows-style internet connectivity probe reached the expected public response.'))
+}
+elseif ($httpsAny.success) {
+    $checks.Add((New-Check 'Captive portal / connectivity probe' 'INFO' 'HTTPS works, but the Microsoft connectivity probe did not return the expected body. This can be caused by filtering or captive-portal interception.' $connectivityProbe))
+}
+
+$winsockCatalog = ''
+try { $winsockCatalog = (& netsh.exe winsock show catalog 2>&1 | Out-String) } catch { }
+$winsockProviders = @()
+if ($winsockCatalog) {
+    $winsockProviders = @(
+        [regex]::Matches($winsockCatalog, '(?im)^\s*(?:Catalog Entry|Protocol|Provider Path|Description).*?    HasConnectedAdapter = $connected
+    HasApipa = $hasApipa
+    HasDuplicateAddress = $hasDuplicateAddress
+    HasGateway = $hasGateway
+    InternetPing = $internetPing
+    CurrentDns = [bool]$currentDns.success
+    DirectDns = $directDns
+    Https = [bool]$httpsAny.success
+}
+$classification = Get-Classification @classArgs
+
+$timestamp = Get-Date
+$runFolder = Join-Path $OutputDirectory ("Network-{0}" -f $timestamp.ToString('yyyyMMdd-HHmmss'))
+New-Item -ItemType Directory -Path $runFolder -Force | Out-Null
+
+$activeRecord = $null
+if ($activeAdapter) {
+    $activeRecord = [ordered]@{
+        name = $activeAdapter.Name
+        description = $activeAdapter.InterfaceDescription
+        interfaceIndex = $activeAdapter.ifIndex
+        macAddress = $activeAdapter.MacAddress
+        status = [string]$activeAdapter.Status
+        linkSpeed = [string]$activeAdapter.LinkSpeed
+        dhcp = if ($activeInterface) { [string]$activeInterface.Dhcp } else { $null }
+        ipv4 = @($activeAddresses | ForEach-Object IPAddress)
+        gateway = $gateway
+        dnsServers = $dnsServers
+    }
+}
+
+$report = [ordered]@{
+    schemaVersion = 1
+    generatedAt = $timestamp.ToString('o')
+    computerName = $env:COMPUTERNAME
+    mode = 'Diagnose'
+    classification = $classification.classification
+    severity = $classification.severity
+    summary = $classification.summary
+    nextAction = $classification.nextAction
+    activeAdapter = $activeRecord
+    checks = $checks
+    duplicateAddressConflicts = $duplicateEvents
+    neighbors = $neighbors
+    adapters = $adapterRecords
+    dns = [ordered]@{
+        configuredServers = $dnsServers
+        currentResolver = $currentDns
+        directCloudflare = $directDns1
+        directGoogle = $directDns8
+        loopbackListeners = $dnsListeners
+    }
+    connectivity = [ordered]@{
+        gatewayPing = $gatewayPing
+        publicIpPing = $internetPing
+        tcp443Github = $tcp443
+        https = $httpsAny
+        httpsIpv4 = $https4
+        httpsIpv6 = $https6
+    }
+    proxy = [ordered]@{
+        winHttp = $winHttpProxy
+        user = $userProxy
+    }
+    networkRelevantServices = $interestingServices
+}
+
+$jsonPath = Join-Path $runFolder 'network-doctor-report.json'
+$mdPath = Join-Path $runFolder 'network-doctor-report.md'
+$report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
+
+$md = New-Object System.Collections.Generic.List[string]
+$md.Add('# Windows Crash Doctor - Network Doctor report')
+$md.Add('')
+$md.Add("Generated: **$($report.generatedAt)**")
+$md.Add("Computer: **$($report.computerName)**")
+$md.Add('')
+$md.Add('## Diagnosis')
+$md.Add('')
+$md.Add("**$($report.classification)**")
+$md.Add('')
+$md.Add($report.summary)
+$md.Add('')
+$md.Add("**Next action:** $($report.nextAction)")
+$md.Add('')
+$md.Add('## Checks')
+$md.Add('')
+foreach ($check in $checks) {
+    $md.Add("- **[$($check.status)] $($check.name):** $($check.detail)")
+}
+if ($duplicateEvents.Count -gt 0) {
+    $md.Add('')
+    $md.Add('## Recent duplicate-address conflicts')
+    $md.Add('')
+    foreach ($evt in $duplicateEvents | Select-Object -First 15) {
+        $md.Add("- $($evt.timeCreated): IP $($evt.ipAddress) from MAC $($evt.macAddress)")
+    }
+}
+$md.Add('')
+$md.Add('## Safety boundary')
+$md.Add('')
+$md.Add('Network Doctor diagnoses by default. It does not silently change DNS servers, force DHCP, reset Winsock/TCP-IP, disable security software, alter VPNs, or assign a static IP.')
+$md | Set-Content -LiteralPath $mdPath -Encoding UTF8
+
+Write-Output "CLASSIFICATION: $($report.classification)"
+Write-Output "SUMMARY: $($report.summary)"
+Write-Output "NEXT: $($report.nextAction)"
+Write-Output "REPORT_JSON: $jsonPath"
+Write-Output "REPORT_MD: $mdPath"
+) |
+        ForEach-Object { $_.Value.Trim() } |
+        Select-Object -First 120
+    )
+}
+$checks.Add((New-Check 'Winsock/LSP inventory' 'INFO' 'Captured Winsock provider metadata for comparison. Network Doctor does not automatically reset Winsock because that is a broad remediation step.' $winsockProviders))
+
+$browserProcesses = @(Get-Process chrome,msedge,firefox -ErrorAction SilentlyContinue | Select-Object ProcessName,Id,Path)
+if ($httpsAny.success -and $currentDns.success) {
+    $checks.Add((New-Check 'Browser-vs-network boundary' 'INFO' 'Windows DNS and HTTPS tests passed. If a browser still cannot load pages, the failure is likely above the basic network path: browser profile/session, extension, QUIC, TLS interception, security integration or app-specific proxy behaviour.' $browserProcesses))
 }
 
 $classArgs = @{
