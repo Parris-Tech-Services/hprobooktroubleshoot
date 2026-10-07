@@ -95,10 +95,10 @@ For `MDMP` minidumps Crash Doctor currently parses:
 - exception thread/code/address/parameters when present;
 - loaded-module list, module base/size/timestamps, and CodeView `RSDS` PDB metadata (`WCD-002`);
 - thread count, context registers (RIP, RSP, RBP / EIP, ESP, EBP), and thread stack memory descriptors (`MINIDUMP_THREAD`);
-- true call-stack unwinding with activation frames, instruction pointers, module mapping, symbol offsets, and return addresses (`WCD-004`, `WCD-005`);
+- optional **cdb/DbgEng-backed true user-mode call-stack unwinding** with per-thread frames and Microsoft symbol resolution (`WCD-005`). Raw-stack candidate scans remain separate. Kernel unwind support is not marked complete until a real kernel crash-dump acceptance fixture passes (`WCD-004`);
 - per-thread call-stack ranking (`FAULTING_THREAD`, `ACTIVE_WORKER`, `IDLE_THREAD`);
 - candidate driver addresses active in raw stack memory mapped to module names (`WCD-023`, explicitly kept distinct from true unwound call stacks);
-- automated bugcheck and exception decoding with Failure Bucket IDs and parameter tables comparable to `!analyze -v` (`WCD-003`);
+- automated bugcheck/exception decoding plus optional capture of Microsoft `cdb !analyze -v` failure-bucket evidence (`WCD-003`);
 - bounded problem family classification: `Driver`, `Hardware`, `MemoryCorruption`, `StorageFileSystem`, `PowerThermal`, `SystemSoftware` (`WCD-018`);
 - `MemoryList`, `Memory64List` and `MemoryInfoList` summary metadata;
 - known stream names while retaining unknown stream IDs.
@@ -187,11 +187,16 @@ Sensor and power-report data is time-bounded evidence:
 
 The final rule matters on reused/refurbished images where inherited or clock-corrupted records can otherwise create false crash histories.
 
+## Debugger-assisted dump analysis
+
+`Get-CrashDoctorDumpInfo -UseDebugger` is an explicit opt-in path. When Windows Debugging Tools are installed, Windows Doctor invokes Microsoft `cdb.exe`/DbgEng against the selected dump, uses `srv*<cache>*https://msdl.microsoft.com/download/symbols`, retains the raw debugger trace, and exposes only those debugger-derived frames as `CallStacks` with `TrueUnwindAvailable = true`. The native PowerShell parser still produces heuristic raw-stack candidates separately and never labels them as unwound frames.
+
+This mode can contact Microsoft's public symbol server and populate the configured local symbol cache. It does not upload the dump itself. If `cdb.exe` is unavailable, the request fails boundedly instead of silently relabelling heuristic stack addresses as a true call stack.
 ## Current limitations
 
 Crash Doctor still does **not**:
-- resolve Microsoft symbols;
-- unwind native/kernel call stacks;
+- guarantee debugger symbol resolution when Windows Debugging Tools (`cdb.exe`) are absent or Microsoft symbol services are unavailable;
+- claim kernel call-stack unwinding as complete: the cdb/DbgEng path exists, but WCD-004 remains open until a real kernel crash-dump acceptance fixture validates it;
 - inspect dump-time locks/deadlocks;
 - fully traverse arbitrary kernel/full-memory dump pages;
 - fully decode arbitrary binary `.evtx` files inside the snapshot rule engine;
