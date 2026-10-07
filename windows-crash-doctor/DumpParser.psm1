@@ -209,6 +209,44 @@ function ConvertTo-CrashDoctorUInt64 {
     }
 }
 
+function ConvertTo-CrashDoctorUInt32 {
+    param($Value)
+    if ($null -eq $Value) { return [uint32]0 }
+    if ($Value -is [uint32]) { return $Value }
+    if ($Value -is [int32]) {
+        $b = [BitConverter]::GetBytes([int32]$Value)
+        return [BitConverter]::ToUInt32($b, 0)
+    }
+    if ($Value -is [uint64]) {
+        $b = [BitConverter]::GetBytes([uint64]$Value)
+        return [BitConverter]::ToUInt32($b, 0)
+    }
+    if ($Value -is [int64]) {
+        $b = [BitConverter]::GetBytes([int64]$Value)
+        return [BitConverter]::ToUInt32($b, 0)
+    }
+    if ($Value -is [string]) {
+        $s = $Value.Trim()
+        if ($s.StartsWith('0x', [StringComparison]::OrdinalIgnoreCase)) {
+            $s = $s.Substring(2)
+        }
+        $parsed = [uint32]0
+        if ([uint32]::TryParse($s, [Globalization.NumberStyles]::HexNumber, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+            return $parsed
+        }
+        $parsed64 = [uint64]0
+        if ([uint64]::TryParse($s, [Globalization.NumberStyles]::HexNumber, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed64)) {
+            $b = [BitConverter]::GetBytes([uint64]$parsed64)
+            return [BitConverter]::ToUInt32($b, 0)
+        }
+    }
+    try {
+        return [uint32]$Value
+    } catch {
+        return [uint32]0
+    }
+}
+
 function Get-CrashDoctorMachineName {
     param([uint32]$MachineType)
     switch ($MachineType) {
@@ -806,8 +844,9 @@ function Get-CrashDoctorBugCheckAnalysis {
         # 0x3B: SYSTEM_SERVICE_EXCEPTION
         0x3B {
             $problemFamily = 'SystemSoftware'
-            $excHex = ('0x{0:X8}' -f [uint32]$p1)
-            $excName = Get-CrashDoctorBugCheckName -Code ([uint32]$p1)
+            $uP1 = ConvertTo-CrashDoctorUInt32 $p1
+            $excHex = ('0x{0:X8}' -f $uP1)
+            $excName = Get-CrashDoctorBugCheckName -Code $uP1
             $failureBucket = if ($FaultingModule) { "SYSTEM_SERVICE_EXCEPTION_$FaultingModule" } else { "SYSTEM_SERVICE_EXCEPTION_$excName" }
             $summary = "Unhandled exception in kernel-mode system service code ($excName)."
             $explanation = "A system routine executed by the operating system kernel or a subsystem component generated an unhandled exception ($excHex - $excName) at instruction 0x{0:X16}." -f $p2
@@ -837,8 +876,9 @@ function Get-CrashDoctorBugCheckAnalysis {
         # 0x7E: SYSTEM_THREAD_EXCEPTION_NOT_HANDLED
         0x7E {
             $problemFamily = if ($FaultingModule -and $FaultingModule -match '(?i)\.sys$') { 'Driver' } else { 'SystemSoftware' }
-            $excHex = ('0x{0:X8}' -f [uint32]$p1)
-            $excName = Get-CrashDoctorBugCheckName -Code ([uint32]$p1)
+            $uP1 = ConvertTo-CrashDoctorUInt32 $p1
+            $excHex = ('0x{0:X8}' -f $uP1)
+            $excName = Get-CrashDoctorBugCheckName -Code $uP1
             $failureBucket = if ($FaultingModule) { "THREAD_EXCEPTION_$FaultingModule" } else { "THREAD_EXCEPTION_$excName" }
             $summary = "System thread generated an unhandled exception ($excName)."
             $explanation = "A system worker thread encountered an unhandled exception ($excHex - $excName) at instruction 0x{0:X16}." -f $p2
@@ -927,7 +967,8 @@ function Get-CrashDoctorBugCheckAnalysis {
         0xE0434352L {
             $problemFamily = 'SystemSoftware'
             $failureBucket = if ($FaultingModule) { "CLR_EXCEPTION_$FaultingModule" } else { 'CLR_EXCEPTION' }
-            $hresultHex = ('0x{0:X8}' -f [uint32]$p1)
+            $uP1 = ConvertTo-CrashDoctorUInt32 $p1
+            $hresultHex = ('0x{0:X8}' -f $uP1)
             $summary = "Unhandled Common Language Runtime (.NET) exception ($hresultHex)."
             $explanation = "A managed .NET application terminated due to an unhandled exception. The runtime raised Win32 exception code 0xE0434352 (ASCII: CCR / CLR) with HRESULT $hresultHex."
             $recommended = 'Inspect Application event logs and .NET Runtime event source for the managed stack trace and inner exception details.'
@@ -1681,4 +1722,4 @@ function ConvertTo-CrashDoctorCrashHistoryMarkdown {
     return ($lines -join [Environment]::NewLine)
 }
 
-Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule, Get-CrashDoctorProblemClassification, Get-CrashDoctorStackCandidateDrivers, Read-CrashDoctorMiniDumpThreads, Get-CrashDoctorBugCheckAnalysis, Read-CrashDoctorCallStack, Get-CrashDoctorThreadCallStacks, Get-CrashDoctorSymbolConfig, Set-CrashDoctorSymbolConfig, Get-CrashDoctorModulePdbInfo, Find-CrashDoctorSymbol
+Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule, Get-CrashDoctorProblemClassification, Get-CrashDoctorStackCandidateDrivers, Read-CrashDoctorMiniDumpThreads, Get-CrashDoctorBugCheckAnalysis, Read-CrashDoctorCallStack, Get-CrashDoctorThreadCallStacks, Get-CrashDoctorSymbolConfig, Set-CrashDoctorSymbolConfig, Get-CrashDoctorModulePdbInfo, Find-CrashDoctorSymbol, ConvertTo-CrashDoctorUInt32

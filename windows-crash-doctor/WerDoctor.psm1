@@ -578,12 +578,19 @@ function Get-CrashDoctorUserModeCrashDumps {
                 $parsed = $true
                 $arch = $dumpInfo.Architecture
                 if ($dumpInfo.Exception) {
-                    $excCode = ('0x{0:X8}' -f [uint32]$dumpInfo.Exception.ExceptionCode)
+                    $uExc = if (Get-Command ConvertTo-CrashDoctorUInt32 -ErrorAction SilentlyContinue) {
+                        ConvertTo-CrashDoctorUInt32 $dumpInfo.Exception.ExceptionCode
+                    } else {
+                        [uint32]$dumpInfo.Exception.ExceptionCode
+                    }
+                    $excCode = ('0x{0:X8}' -f $uExc)
                 }
                 if ($dumpInfo.PSObject.Properties.Name -contains 'FaultingModule') {
                     $faultMod = $dumpInfo.FaultingModule
                 }
-            } catch { }
+            } catch {
+                Write-Verbose "WerDoctor: Failed to parse dump '$($file.FullName)': $($_.Exception.Message)"
+            }
         }
 
         $dumpFormat = if ($parsed -and $null -ne $dumpInfo.PSObject.Properties['Format']) { [string]$dumpInfo.Format } else { 'MiniDump' }
