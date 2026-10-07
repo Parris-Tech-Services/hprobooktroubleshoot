@@ -1019,7 +1019,7 @@ function Get-CrashDoctorBugCheckAnalysis {
     }
 }
 
-function Read-CrashDoctorCallStack {
+function Read-CrashDoctorHeuristicThreadFrames {
     [CmdletBinding()]
     param(
         [System.IO.FileStream]$Stream,
@@ -1157,7 +1157,7 @@ function Read-CrashDoctorCallStack {
     return $frames.ToArray()
 }
 
-function Get-CrashDoctorThreadCallStacks {
+function Get-CrashDoctorHeuristicThreadStacks {
     [CmdletBinding()]
     param(
         [System.IO.FileStream]$Stream,
@@ -1184,7 +1184,7 @@ function Get-CrashDoctorThreadCallStacks {
     for ($i = 0; $i -lt $maxCount; $i++) {
         $t = $threadList[$i]
         $isFaulting = ($FaultingThreadId -ne 0 -and $t.ThreadId -eq $FaultingThreadId)
-        $frames = @(Read-CrashDoctorCallStack -Stream $Stream -Thread $t -Modules $Modules -Architecture $Architecture -ExceptionContext $(if ($isFaulting) { $ExceptionContext } else { $null }))
+        $frames = @(Read-CrashDoctorHeuristicThreadFrames -Stream $Stream -Thread $t -Modules $Modules -Architecture $Architecture -ExceptionContext $(if ($isFaulting) { $ExceptionContext } else { $null }))
 
         $topSymbol = if ($frames.Count -gt 0) { $frames[0].Symbol } else { 'NoFrames' }
         $hasThirdParty = $false
@@ -1269,7 +1269,7 @@ function Read-CrashDoctorMiniDump {
     $bugCheckAnalysis = Get-CrashDoctorBugCheckAnalysis -BugCheckCode $exceptionCode -Parameters $exceptionParams -FaultingModule $faultingModule -ExceptionAddress $exceptionAddress -Architecture $dumpArch
 
     # Heuristic raw-stack candidates are useful evidence, but they are not true unwound call stacks.
-    $heuristicThreadStacks = @(Get-CrashDoctorThreadCallStacks -Stream $Stream -Threads $threads -Modules $modules -FaultingThreadId $faultingThreadId -Architecture $dumpArch)
+    $heuristicThreadStacks = @(Get-CrashDoctorHeuristicThreadStacks -Stream $Stream -Threads $threads -Modules $modules -FaultingThreadId $faultingThreadId -Architecture $dumpArch)
     $callStacks = @()
     $faultingCallStack = $null
 
@@ -1752,4 +1752,4 @@ function ConvertTo-CrashDoctorCrashHistoryMarkdown {
     return ($lines -join [Environment]::NewLine)
 }
 
-Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule, Get-CrashDoctorProblemClassification, Get-CrashDoctorStackCandidateDrivers, Read-CrashDoctorMiniDumpThreads, Get-CrashDoctorBugCheckAnalysis, Read-CrashDoctorCallStack, Get-CrashDoctorThreadCallStacks, Get-CrashDoctorSymbolConfig, Set-CrashDoctorSymbolConfig, Get-CrashDoctorModulePdbInfo, Find-CrashDoctorSymbol, ConvertTo-CrashDoctorUInt32
+Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule, Get-CrashDoctorProblemClassification, Get-CrashDoctorStackCandidateDrivers, Read-CrashDoctorMiniDumpThreads, Get-CrashDoctorBugCheckAnalysis, Read-CrashDoctorHeuristicThreadFrames, Get-CrashDoctorHeuristicThreadStacks, Get-CrashDoctorSymbolConfig, Set-CrashDoctorSymbolConfig, Get-CrashDoctorModulePdbInfo, Find-CrashDoctorSymbol, ConvertTo-CrashDoctorUInt32
