@@ -3,7 +3,7 @@
 This is the canonical product backlog derived from a September 2026 comparison against ten mature crash, hang and system-diagnostics tools.
 
 **Brand & naming:** Public user-facing brand is **Windows Doctor**. Technical identifiers (`WindowsCrashDoctor.exe`, `desktop/WindowsCrashDoctor.App`, `windows-crash-doctor/` modules) are retained internally for backward compatibility.  
-**Status:** **14 of 100 items completed and verified with automated tests** (`WCD-002`, `WCD-003`, `WCD-004`, `WCD-005`, `WCD-011`, `WCD-018`, `WCD-021`, `WCD-022`, `WCD-023`, `WCD-061`, `WCD-062`, `WCD-063`, `WCD-064`, `WCD-065`); **86 items remain open**. Completing an item requires implementation **and** a regression/acceptance test.  
+**Status:** **13 of 100 items completed and verified with automated tests** (`WCD-002`, `WCD-003`, `WCD-005`, `WCD-011`, `WCD-018`, `WCD-021`, `WCD-022`, `WCD-023`, `WCD-061`, `WCD-062`, `WCD-063`, `WCD-064`, `WCD-065`); **87 items remain open**. Completing an item requires implementation **and** a regression/acceptance test.  
 **Priorities:** `P0` = core diagnostic reliability, `P1` = high-value expansion, `P2` = advanced/productisation.  
 **Evidence rule:** new automation must preserve the current rule that observation, interpretation and causality are separate concepts.
 
@@ -24,7 +24,7 @@ Inspiration: Microsoft's full Windows debugger: native/user/kernel dump analysis
 - [ ] **WCD-001 [P0]** Add native parsing for Windows minidump, kernel dump and full-memory dump formats.
 - [x] **WCD-002 [P0]** Add Microsoft symbol-server support with a configurable local symbol cache.
 - [x] **WCD-003 [P0]** Add automatic bugcheck and exception decoding comparable to `!analyze -v`.
-- [x] **WCD-004 [P0]** Extract and rank kernel call stacks from crash dumps.
+- [ ] **WCD-004 [P0]** Extract and rank kernel call stacks from crash dumps. The cdb/DbgEng backend can attempt kernel dumps, but this remains open until a real kernel crash-dump acceptance fixture proves unwind correctness end-to-end.
 - [x] **WCD-005 [P0]** Add user-mode dump analysis with per-thread call stacks.
 - [ ] **WCD-006 [P1]** Extract loaded modules from dumps, including image path, version, timestamp and vendor metadata.
 - [ ] **WCD-007 [P1]** Expose register/context records from the faulting thread and processor.
