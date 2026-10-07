@@ -84,7 +84,7 @@ function Test-HttpsTarget {
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
     if ($curl) {
         try {
-            $curlArgs = @(-sS','-I','--max-time','8','-o','NUL','-w','%{http_code}')
+            $curlArgs = @('-sS','-I','--max-time','8','-o','NUL','-w','%{http_code}')
             if ($Family -eq 'IPv4') { $curlArgs += '-4' }
             if ($Family -eq 'IPv6') { $curlArgs += '-6' }
             $curlArgs += $Url
