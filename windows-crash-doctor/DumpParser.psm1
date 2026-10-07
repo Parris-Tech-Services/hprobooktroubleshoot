@@ -76,6 +76,7 @@ $script:KnownBugCheckNames = @{
     '0x1D5'      = 'DRIVER_PNP_WATCHDOG'
     '0xC0000005' = 'STATUS_ACCESS_VIOLATION'
     '0xC00000FD' = 'STATUS_STACK_OVERFLOW'
+    '0xE0434352' = 'CLR_EXCEPTION'
 }
 
 function Get-CrashDoctorBugCheckName {
@@ -372,6 +373,14 @@ function Read-CrashDoctorMiniDumpThreads {
     return $threads.ToArray()
 }
 
+<#
+.SYNOPSIS
+    Scans raw thread stack memory for pointer-sized values that fall within the address space of loaded modules.
+.DESCRIPTION
+    Implements WCD-023 (BlueScreenView-style candidate stack-address-to-module mapping).
+    Note: This is candidate address-to-module scanning, NOT true call-stack unwinding.
+    True call-stack unwinding with frame pointer / DWARF / PDB traversal is tracked in WCD-004 and WCD-005.
+#>
 function Get-CrashDoctorStackCandidateDrivers {
     [CmdletBinding()]
     param(
@@ -424,7 +433,7 @@ function Get-CrashDoctorStackCandidateDrivers {
                     if ([string]::IsNullOrWhiteSpace($modName)) { $modName = [string]$m.Name }
                     if ($seenModules.Add($modName)) {
                         $offsetHex = '0x{0:X}' -f ($addr - $base)
-                        $isCore = $modName -match '(?i)^(ntoskrnl|hal|fltmgr|ntfs|ndis|tcpip|ci|win32k|win32kbase|win32kfull|storport|dump_storport)\.(sys|exe|dll)$'
+                        $isCore = [bool]($modName -match '(?i)^(ntoskrnl\.exe|hal\.dll|(fltmgr|ntfs|ndis|tcpip|ci|win32k|win32kbase|win32kfull|storport|dump_storport)\.(sys|dll)|(ntdll|kernel32|kernelbase|user32|gdi32|msvcrt|clr|mscoree|ucrtbase|combase|rpcrt4)\.dll)$')
                         $foundDrivers.Add([pscustomobject][ordered]@{
                             Name            = $modName
                             FullPath        = $m.Name
@@ -485,17 +494,15 @@ function Get-CrashDoctorProblemClassification {
     if ($CandidateDrivers) {
         foreach ($d in @($CandidateDrivers)) {
             if ($null -eq $d) { continue }
-            $isCore = $false
-            if ($d -is [System.Management.Automation.PSObject]) {
-                if ($null -ne $d.PSObject.Properties['IsCoreComponent']) {
+            $name = if ($d -is [System.Management.Automation.PSObject] -and $null -ne $d.PSObject.Properties['Name']) { [string]$d.Name } else { [string]$d }
+            if ($name -match '(?i)\.sys$') {
+                $isCore = [bool]($name -match '(?i)^(ntoskrnl|hal|fltmgr|ntfs|ndis|tcpip|ci|win32k|win32kbase|win32kfull|storport|dump_storport)\.(sys|exe|dll)$')
+                if ($d -is [System.Management.Automation.PSObject] -and $null -ne $d.PSObject.Properties['IsCoreComponent']) {
                     $isCore = [bool]$d.IsCoreComponent
                 }
-                elseif ($null -ne $d.PSObject.Properties['Name']) {
-                    $isCore = [bool]($d.Name -match '(?i)^(ntoskrnl|hal|fltmgr|ntfs|ndis|tcpip|ci|win32k|win32kbase|win32kfull|storport|dump_storport)\.(sys|exe|dll)$')
+                if (-not $isCore) {
+                    $thirdPartyDrivers.Add($d)
                 }
-            }
-            if (-not $isCore) {
-                $thirdPartyDrivers.Add($d)
             }
         }
     }
@@ -601,7 +608,7 @@ function Get-CrashDoctorProblemClassification {
         }
 
         # System Software / Subsystem
-        { $_ -in @(0x3B, 0x7E, 0x1E, 0x7F, 0xEF, 0xC0000005, 0xC00000FD) } {
+        { $_ -in @(0x3BL, 0x7EL, 0x1EL, 0x7FL, 0xEFL, 0xC0000005L, 0xC00000FDL, 0xE0434352L) } {
             $fam = if ($thirdPartyDrivers.Count -gt 0) { 'Driver' } else { 'SystemSoftware' }
             $conf = if ($thirdPartyDrivers.Count -gt 0) { 'Medium' } else { 'Medium' }
             $summary = switch ($u) {
@@ -610,9 +617,10 @@ function Get-CrashDoctorProblemClassification {
                 0x1E  { 'Kmode exception not handled; kernel code executed illegal or unhandled instruction.' }
                 0x7F  { 'Unexpected kernel mode trap; processor trap such as divide-by-zero or double fault.' }
                 0xEF  { 'Critical process died; essential Windows system process (csrss.exe, wininit.exe, etc.) was terminated.' }
-                0xC0000005 { 'Access violation exception; invalid pointer dereference or memory access.' }
-                0xC00000FD { 'Stack overflow exception; call recursion exhausted available thread stack.' }
-                default { "Kernel exception ($bugCheckName)." }
+                0xC0000005L { 'Access violation exception; invalid pointer dereference or memory access.' }
+                0xC00000FDL { 'Stack overflow exception; call recursion exhausted available thread stack.' }
+                0xE0434352L { 'CLR / .NET runtime exception; unhandled managed exception in runtime process.' }
+                default { "Kernel or application exception ($bugCheckName)." }
             }
             if ($thirdPartyDrivers.Count -gt 0) {
                 $summary += " Third-party driver(s) present on faulting stack: $(($thirdPartyDrivers | Select-Object -ExpandProperty Name -Unique) -join ', ')."
@@ -641,7 +649,7 @@ function Get-CrashDoctorProblemClassification {
         }
 
         default {
-            $fam = if ($thirdPartyDrivers.Count -gt 0) { 'Driver' } elseif ($FaultingModule) { 'Driver' } else { 'Unknown' }
+            $fam = if ($thirdPartyDrivers.Count -gt 0) { 'Driver' } elseif ($FaultingModule -and $FaultingModule -match '(?i)\.sys$') { 'Driver' } elseif ($FaultingModule) { 'SystemSoftware' } else { 'Unknown' }
             return [pscustomobject][ordered]@{
                 Family              = $fam
                 Confidence          = 'Low'

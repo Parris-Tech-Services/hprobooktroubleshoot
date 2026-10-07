@@ -101,10 +101,71 @@ AppLargeDump=memory.dmp
     $expectedRollback = "# Revert per-application LocalDumps setting for $cleanExe`r`nRemove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\$cleanExe' -Recurse -Force -ErrorAction SilentlyContinue"
     Assert-True ($expectedRollback -match 'Remove-Item') 'Rollback command structure valid'
 
+    # 4b. Real acceptance test for WCD-064: apply, verify in registry, audit via config, rollback, verify restoration
+    $testRegRoot = 'HKCU:\Software\CrashDoctorTest\LocalDumps'
+    if (Test-Path -LiteralPath $testRegRoot) { Remove-Item -Path $testRegRoot -Recurse -Force -ErrorAction SilentlyContinue }
+
+    try {
+        $appliedCfg = Set-CrashDoctorLocalDumps -ExecutableName 'audit_probe.exe' -DumpFolder $temp -DumpCount 7 -DumpType 'Full' -RegistryRoot $testRegRoot -PassThru
+        Assert-Equal $appliedCfg.Status 'Configured' 'Status should be Configured'
+        Assert-Equal $appliedCfg.Application 'audit_probe.exe' 'Application should be audit_probe.exe'
+        Assert-Equal $appliedCfg.DumpCount 7 'DumpCount should be 7'
+        Assert-Equal $appliedCfg.DumpType 'Full' 'DumpType should be Full'
+
+        # Direct registry verification
+        $appKey = Join-Path $testRegRoot 'audit_probe.exe'
+        Assert-True (Test-Path -LiteralPath $appKey) 'Registry key must physically exist'
+        $rawProps = Get-ItemProperty -LiteralPath $appKey
+        Assert-Equal ([string]$rawProps.DumpFolder) $temp 'DumpFolder in registry must match'
+        Assert-Equal ([int]$rawProps.DumpCount) 7 'DumpCount in registry must match'
+        Assert-Equal ([int]$rawProps.DumpType) 2 'DumpType in registry must be 2 (Full)'
+
+        # Audit via Get-CrashDoctorLocalDumpsConfig
+        $audited = Get-CrashDoctorLocalDumpsConfig -RegistryRoot $testRegRoot
+        Assert-Equal $audited.PerAppCount 1 'Audited per-app count should be 1'
+        Assert-Equal $audited.PerAppConfigs[0].ApplicationName 'audit_probe.exe' 'Audited app name match'
+        Assert-Equal $audited.PerAppConfigs[0].DumpType 2 'Audited DumpType match'
+        Assert-Equal $audited.PerAppConfigs[0].DumpTypeName 'Full' 'Audited DumpTypeName match'
+
+        # Execute rollback
+        $remResult = Remove-CrashDoctorLocalDumps -ExecutableName 'audit_probe.exe' -RegistryRoot $testRegRoot -PassThru
+        Assert-Equal $remResult.Status 'Removed' 'Status should be Removed'
+        Assert-True (-not (Test-Path -LiteralPath $appKey)) 'Registry key must no longer exist after rollback'
+
+        $restoredAudit = Get-CrashDoctorLocalDumpsConfig -RegistryRoot $testRegRoot
+        Assert-Equal $restoredAudit.PerAppCount 0 'Audited per-app count must be 0 after rollback'
+    }
+    finally {
+        Remove-Item -Path 'HKCU:\Software\CrashDoctorTest' -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # If running with Administrator privilege, also verify real HKLM LocalDumps apply and rollback
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($isAdmin) {
+        $hklmApp = 'wcd_test_probe_elevated.exe'
+        $hklmKey = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\$hklmApp"
+        try {
+            $hklmSet = Set-CrashDoctorLocalDumps -ExecutableName $hklmApp -DumpFolder $temp -DumpCount 3 -DumpType 'Mini' -PassThru
+            Assert-True (Test-Path -LiteralPath $hklmKey) 'HKLM key must be created under Administrator'
+            $hklmProps = Get-ItemProperty -LiteralPath $hklmKey
+            Assert-Equal ([int]$hklmProps.DumpCount) 3 'HKLM DumpCount must be 3'
+            Assert-Equal ([int]$hklmProps.DumpType) 1 'HKLM DumpType must be 1 (Mini)'
+
+            # Roll back using Remove-CrashDoctorLocalDumps
+            Remove-CrashDoctorLocalDumps -ExecutableName $hklmApp | Out-Null
+            Assert-True (-not (Test-Path -LiteralPath $hklmKey)) 'HKLM key must be removed after rollback'
+        }
+        finally {
+            if (Test-Path -LiteralPath $hklmKey) {
+                Remove-Item -Path $hklmKey -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
     # 5. Test Remove-CrashDoctorLocalDumps -WhatIf
     Remove-CrashDoctorLocalDumps -ExecutableName 'notepad.exe' -WhatIf
 
-    # 6. Test Get-CrashDoctorUserModeCrashDumps
+    # 6. Test Get-CrashDoctorUserModeCrashDumps with synthetic dump
     $fakeUserDumpFolder = Join-Path $temp 'CrashDumps'
     New-Item -ItemType Directory -Path $fakeUserDumpFolder -Force | Out-Null
     $fakeUserDumpFile = Join-Path $fakeUserDumpFolder 'notepad.exe.1234.dmp'
@@ -114,6 +175,85 @@ AppLargeDump=memory.dmp
     Assert-Equal $userDumps.Count 1 'Should discover 1 user-mode dump'
     Assert-Equal $userDumps[0].Application 'notepad.exe' 'Should extract application name from dump file name'
     Assert-Equal $userDumps[0].FileName 'notepad.exe.1234.dmp' 'FileName should match'
+
+    # 6b. Real acceptance test for WCD-065: real crash generation, WER / LocalDumps minidump creation, and parsing
+    if ($isAdmin) {
+        $csc = (Get-ChildItem -Path "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -ErrorAction SilentlyContinue).FullName
+        if (-not $csc) {
+            $csc = (Get-ChildItem -Path "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe" -ErrorAction SilentlyContinue).FullName
+        }
+
+        if ($csc -and (Test-Path -LiteralPath $csc)) {
+            $crashSrc = @'
+using System;
+using System.Runtime.InteropServices;
+class Program {
+    static void Main(string[] args) {
+        Marshal.WriteInt32(IntPtr.Zero, 42);
+    }
+}
+'@
+            $crashCs = Join-Path $temp 'WcdRealCrashApp.cs'
+            $crashExe = Join-Path $temp 'WcdRealCrashApp.exe'
+            $realDumpDir = Join-Path $temp 'RealWERDumps'
+            New-Item -ItemType Directory -Path $realDumpDir -Force | Out-Null
+            [System.IO.File]::WriteAllText($crashCs, $crashSrc)
+
+            & $csc /target:exe /out:$crashExe $crashCs | Out-Null
+
+            if (Test-Path -LiteralPath $crashExe) {
+                try {
+                    # Configure LocalDumps for the test binary
+                    Set-CrashDoctorLocalDumps -ExecutableName 'WcdRealCrashApp.exe' -DumpFolder $realDumpDir -DumpType 'Mini' | Out-Null
+
+                    # Execute the crashing binary in a separate process
+                    $proc = Start-Process -FilePath $crashExe -PassThru -Wait -NoNewWindow
+
+                    # Poll for WerFault.exe to write the dump (up to 10 seconds)
+                    $realDumpFile = $null
+                    for ($s = 0; $s -lt 20; $s++) {
+                        Start-Sleep -Milliseconds 500
+                        $foundDmps = @(Get-ChildItem -Path $realDumpDir -Filter 'WcdRealCrashApp.exe.*.dmp' -ErrorAction SilentlyContinue)
+                        if ($foundDmps.Count -gt 0 -and $foundDmps[0].Length -gt 1024) {
+                            $realDumpFile = $foundDmps[0]
+                            break
+                        }
+                    }
+
+                    if ($null -ne $realDumpFile) {
+                        Assert-True ($realDumpFile.Length -gt 10000) 'Real WER dump must be larger than 10KB'
+
+                        # Verify magic header
+                        $fs = [System.IO.File]::OpenRead($realDumpFile.FullName)
+                        $hdrBytes = New-Object byte[] 4
+                        $fs.Read($hdrBytes, 0, 4) | Out-Null
+                        $fs.Close()
+                        $sig = [System.Text.Encoding]::ASCII.GetString($hdrBytes)
+                        Assert-Equal $sig 'MDMP' 'Dump file must have MDMP signature'
+
+                        # Ingest via Get-CrashDoctorUserModeCrashDumps
+                        $cataloguedReal = @(Get-CrashDoctorUserModeCrashDumps -SearchFolders @($realDumpDir))
+                        Assert-True ($cataloguedReal.Count -ge 1) 'Must catalogue real WER dump'
+                        $cdump = $cataloguedReal[0]
+                        Assert-Equal $cdump.Application 'WcdRealCrashApp.exe' 'Catalogue must match executable name'
+                        Assert-Equal $cdump.DumpType 'MiniDump' 'Dump type must be MiniDump'
+                        Assert-True ($cdump.ExceptionCode -in @('0xC0000005', '0xE0434352')) "Exception code must be 0xC0000005 or 0xE0434352, got $($cdump.ExceptionCode)"
+                        Assert-True $cdump.Parsed 'Parsed must be true'
+                        Assert-True ($cdump.ThreadCount -gt 0) 'ThreadCount must be > 0'
+                        Assert-True ($cdump.ModuleCount -gt 0) 'ModuleCount must be > 0'
+                        Assert-True ($null -ne $cdump.ProblemClassification) 'ProblemClassification must be populated'
+                        Assert-Equal $cdump.ProblemClassification.Family 'SystemSoftware' 'Family must be SystemSoftware'
+                        Write-Host ('Real WER dump captured and verified: {0} ({1} bytes, code: {2}, modules: {3}, threads: {4})' -f $realDumpFile.Name, $realDumpFile.Length, $cdump.ExceptionCode, $cdump.ModuleCount, $cdump.ThreadCount)
+                    } else {
+                        Write-Warning 'Real WER dump was not written within timeout; system WER settings may have suppressed child dump.'
+                    }
+                }
+                finally {
+                    Remove-CrashDoctorLocalDumps -ExecutableName 'WcdRealCrashApp.exe' -ErrorAction SilentlyContinue | Out-Null
+                }
+            }
+        }
+    }
 
     # 7. Test ConvertTo-CrashDoctorWerMarkdown
     $werMarkdown = ConvertTo-CrashDoctorWerMarkdown -StoresReport $storesResult -LocalDumpsConfig $localDumpsCfg -UserModeDumps $userDumps

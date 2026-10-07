@@ -274,19 +274,17 @@ function Get-CrashDoctorWerReport {
 
 function Get-CrashDoctorLocalDumpsConfig {
     [CmdletBinding()]
-    param()
-
-    $hklmPath = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
-    $hkcuPath = 'HKCU:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
+    param(
+        [string]$RegistryRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
+    )
 
     $globalConfig = $null
-    $hasHklm = Test-Path -LiteralPath $hklmPath
-    $hasHkcu = Test-Path -LiteralPath $hkcuPath
+    $hasRoot = Test-Path -LiteralPath $RegistryRoot
 
     $defaultDumpFolder = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'CrashDumps' } else { 'C:\CrashDumps' }
 
-    if ($hasHklm) {
-        $props = Get-ItemProperty -LiteralPath $hklmPath -ErrorAction SilentlyContinue
+    if ($hasRoot) {
+        $props = Get-ItemProperty -LiteralPath $RegistryRoot -ErrorAction SilentlyContinue
         $dumpTypeNum = if ($null -ne $props.PSObject.Properties['DumpType']) { [int]$props.DumpType } else { 1 }
         $dumpTypeName = switch ($dumpTypeNum) { 0 { 'Custom' } 1 { 'Mini' } 2 { 'Full' } default { "Type$dumpTypeNum" } }
         $folder = if ($null -ne $props.PSObject.Properties['DumpFolder']) { [string]$props.DumpFolder } else { $defaultDumpFolder }
@@ -295,7 +293,7 @@ function Get-CrashDoctorLocalDumpsConfig {
 
         $globalConfig = [pscustomobject][ordered]@{
             Configured      = $true
-            RegistryPath    = $hklmPath
+            RegistryPath    = $RegistryRoot
             DumpFolder      = $folder
             DumpCount       = $count
             DumpType        = $dumpTypeNum
@@ -306,7 +304,7 @@ function Get-CrashDoctorLocalDumpsConfig {
     else {
         $globalConfig = [pscustomobject][ordered]@{
             Configured      = $false
-            RegistryPath    = $hklmPath
+            RegistryPath    = $RegistryRoot
             DumpFolder      = $defaultDumpFolder
             DumpCount       = 10
             DumpType        = 1
@@ -317,8 +315,8 @@ function Get-CrashDoctorLocalDumpsConfig {
 
     # Per-application configurations
     $perAppConfigs = New-Object System.Collections.Generic.List[object]
-    if ($hasHklm) {
-        $subkeys = @(Get-ChildItem -LiteralPath $hklmPath -ErrorAction SilentlyContinue)
+    if ($hasRoot) {
+        $subkeys = @(Get-ChildItem -LiteralPath $RegistryRoot -ErrorAction SilentlyContinue)
         foreach ($sk in $subkeys) {
             $p = Get-ItemProperty -LiteralPath $sk.PSPath -ErrorAction SilentlyContinue
             $dtNum = if ($null -ne $p.PSObject.Properties['DumpType']) { [int]$p.DumpType } else { $globalConfig.DumpType }
@@ -406,6 +404,7 @@ function Set-CrashDoctorLocalDumps {
         [string]$DumpFolder,
         [int]$DumpCount = 10,
         [ValidateSet('Mini', 'Full')] [string]$DumpType = 'Mini',
+        [string]$RegistryRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps',
         [switch]$PassThru
     )
 
@@ -414,8 +413,7 @@ function Set-CrashDoctorLocalDumps {
         $cleanExe += '.exe'
     }
 
-    $hklmRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
-    $targetKey = if ($cleanExe -eq '*') { $hklmRoot } else { Join-Path $hklmRoot $cleanExe }
+    $targetKey = if ($cleanExe -eq '*') { $RegistryRoot } else { Join-Path $RegistryRoot $cleanExe }
 
     $targetFolder = if ([string]::IsNullOrWhiteSpace($DumpFolder)) {
         if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'CrashDumps' } else { 'C:\CrashDumps' }
@@ -426,15 +424,17 @@ function Set-CrashDoctorLocalDumps {
     $dumpTypeVal = if ($DumpType -eq 'Full') { 2 } else { 1 }
 
     $rollbackCommand = if ($cleanExe -eq '*') {
-        "# Revert global LocalDumps settings`r`nRemove-ItemProperty -Path '$hklmRoot' -Name DumpFolder, DumpCount, DumpType -ErrorAction SilentlyContinue"
+        "# Revert global LocalDumps settings`r`nRemove-ItemProperty -Path '$RegistryRoot' -Name DumpFolder, DumpCount, DumpType -ErrorAction SilentlyContinue"
     } else {
         "# Revert per-application LocalDumps setting for $cleanExe`r`nRemove-Item -Path '$targetKey' -Recurse -Force -ErrorAction SilentlyContinue"
     }
 
     if ($PSCmdlet.ShouldProcess($targetKey, "Configure LocalDumps (Folder='$targetFolder', Count=$DumpCount, Type=$DumpType)")) {
-        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if (-not $isAdmin) {
-            throw "Configuring LocalDumps in '$targetKey' requires Administrator elevation. Re-run from an elevated console or request UAC."
+        if ($RegistryRoot.StartsWith('HKLM:', [StringComparison]::OrdinalIgnoreCase)) {
+            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            if (-not $isAdmin) {
+                throw "Configuring LocalDumps in '$targetKey' requires Administrator elevation. Re-run from an elevated console or request UAC."
+            }
         }
 
         if (-not (Test-Path -LiteralPath $targetKey)) {
@@ -470,6 +470,7 @@ function Remove-CrashDoctorLocalDumps {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)] [string]$ExecutableName,
+        [string]$RegistryRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps',
         [switch]$PassThru
     )
 
@@ -478,18 +479,19 @@ function Remove-CrashDoctorLocalDumps {
         $cleanExe += '.exe'
     }
 
-    $hklmRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
-    $targetKey = if ($cleanExe -eq '*') { $hklmRoot } else { Join-Path $hklmRoot $cleanExe }
+    $targetKey = if ($cleanExe -eq '*') { $RegistryRoot } else { Join-Path $RegistryRoot $cleanExe }
 
     if ($PSCmdlet.ShouldProcess($targetKey, "Remove LocalDumps configuration for '$cleanExe'")) {
-        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if (-not $isAdmin) {
-            throw "Removing LocalDumps configuration from '$targetKey' requires Administrator elevation."
+        if ($RegistryRoot.StartsWith('HKLM:', [StringComparison]::OrdinalIgnoreCase)) {
+            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            if (-not $isAdmin) {
+                throw "Removing LocalDumps configuration from '$targetKey' requires Administrator elevation."
+            }
         }
 
         if (Test-Path -LiteralPath $targetKey) {
             if ($cleanExe -eq '*') {
-                Remove-ItemProperty -Path $hklmRoot -Name 'DumpFolder', 'DumpCount', 'DumpType', 'CustomDumpFlags' -ErrorAction SilentlyContinue
+                Remove-ItemProperty -Path $RegistryRoot -Name 'DumpFolder', 'DumpCount', 'DumpType', 'CustomDumpFlags' -ErrorAction SilentlyContinue
             } else {
                 Remove-Item -Path $targetKey -Recurse -Force | Out-Null
             }
@@ -584,17 +586,28 @@ function Get-CrashDoctorUserModeCrashDumps {
             } catch { }
         }
 
+        $dumpFormat = if ($parsed -and $null -ne $dumpInfo.PSObject.Properties['Format']) { [string]$dumpInfo.Format } else { 'MiniDump' }
+        $threadCnt = if ($parsed -and $null -ne $dumpInfo.PSObject.Properties['ThreadCount']) { [int]$dumpInfo.ThreadCount } else { $null }
+        $modCnt = if ($parsed -and $null -ne $dumpInfo.PSObject.Properties['ModuleCount']) { [int]$dumpInfo.ModuleCount } else { $null }
+        $candDrivers = if ($parsed -and $null -ne $dumpInfo.PSObject.Properties['StackDrivers']) { @($dumpInfo.StackDrivers) } else { @() }
+        $probClass = if ($parsed -and $null -ne $dumpInfo.PSObject.Properties['ProblemClassification']) { $dumpInfo.ProblemClassification } else { $null }
+
         $dumps.Add([pscustomobject][ordered]@{
-            Path           = $file.FullName
-            FileName       = $file.Name
-            FileSize       = $file.Length
-            CrashTimeUtc   = $crashTime.ToString('o')
-            CrashTimeLocal = $crashTime.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss')
-            Application    = $exeName
-            ExceptionCode  = $excCode
-            FaultingModule = $faultMod
-            Architecture   = $arch
-            Parsed         = $parsed
+            Path                  = $file.FullName
+            FileName              = $file.Name
+            FileSize              = $file.Length
+            CrashTimeUtc          = $crashTime.ToString('o')
+            CrashTimeLocal        = $crashTime.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss')
+            Application           = $exeName
+            DumpType              = $dumpFormat
+            ExceptionCode         = $excCode
+            FaultingModule        = $faultMod
+            Architecture          = $arch
+            ThreadCount           = $threadCnt
+            ModuleCount           = $modCnt
+            CandidateDrivers      = $candDrivers
+            ProblemClassification = $probClass
+            Parsed                = $parsed
         })
     }
 
@@ -602,7 +615,7 @@ function Get-CrashDoctorUserModeCrashDumps {
     if ($sorted.Count -gt $MaxDumps) {
         $sorted = $sorted[0..($MaxDumps - 1)]
     }
-    return ,$sorted
+    return $sorted
 }
 
 function ConvertTo-CrashDoctorWerMarkdown {
