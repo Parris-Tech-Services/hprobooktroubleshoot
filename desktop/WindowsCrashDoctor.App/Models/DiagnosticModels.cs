@@ -18,6 +18,7 @@ public sealed class CrashDoctorReport
     public List<CollectorExecutionRecord> CollectorExecutions { get; set; } = new();
     public RunComparisonSummary? Comparison { get; set; }
     public RegistryProvenance? DiagnosticRegistry { get; set; }
+    public List<CrashHistoryRecord> CrashHistory { get; set; } = new();
 }
 
 public sealed class ProductInfo
@@ -213,6 +214,24 @@ public sealed class DiagnosticRunHistory
     public string SummaryText => string.IsNullOrWhiteSpace(ComparisonSummary)
         ? $"{FindingCount} findings • {CoveragePercent:0}% coverage"
         : $"{FindingCount} findings • {CoveragePercent:0}% coverage • {ComparisonSummary}";
+}
+
+public sealed class CrashHistoryRecord
+{
+    public string Path { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public long FileSize { get; set; }
+    public string? CrashTimeUtc { get; set; }
+    public string? CrashTimeLocal { get; set; }
+    public string Format { get; set; } = "";
+    public string? Architecture { get; set; }
+    public string? BugCheckCode { get; set; }
+    public string? BugCheckName { get; set; }
+    public List<string> BugCheckParameters { get; set; } = new();
+    public string? FaultingModule { get; set; }
+    public string? ExceptionAddress { get; set; }
+    public bool Valid { get; set; }
+    public string? Error { get; set; }
 }
 
 public sealed class AppSettings

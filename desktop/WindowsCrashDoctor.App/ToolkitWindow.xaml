@@ -1,0 +1,42 @@
+<Window x:Class="WindowsCrashDoctor.ToolkitWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Windows Doctor — Technician toolkit" Width="1180" Height="850" MinWidth="900" MinHeight="650"
+        WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
+        Background="{DynamicResource WindowBackground}" Foreground="{DynamicResource PrimaryText}">
+    <Grid Margin="20">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="2*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel><TextBlock Text="Technician toolkit" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="Open installed tools, run selected diagnostics and attach external results to local evidence." Margin="0,5,0,12" TextWrapping="Wrap"/></StackPanel>
+        <Grid Grid.Row="1" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="260"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBox x:Name="SearchBox" TextChanged="Filter_Changed" Padding="8" ToolTip="Search tool, capability or notes" AutomationProperties.Name="Search toolkit"/>
+            <ComboBox x:Name="CategoryBox" Grid.Column="1" Margin="10,0" SelectionChanged="Filter_Changed" AutomationProperties.Name="Toolkit category"/>
+            <Button x:Name="RefreshButton" Grid.Column="2" Content="Refresh availability" Padding="12,6" Click="Refresh_Click"/>
+        </Grid>
+        <DataGrid x:Name="ToolsGrid" Grid.Row="2" IsReadOnly="True" AutoGenerateColumns="False" SelectionMode="Single" SelectionChanged="ToolsGrid_SelectionChanged" CanUserAddRows="False" EnableRowVirtualization="True" AutomationProperties.Name="Technician tools">
+            <DataGrid.Columns><DataGridTextColumn Header="Tool" Binding="{Binding Name}" Width="2*"/><DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="2*"/><DataGridTextColumn Header="Availability" Binding="{Binding Status}" Width="*"/><DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="*"/></DataGrid.Columns>
+        </DataGrid>
+        <StackPanel Grid.Row="3" Margin="0,12,0,10">
+            <TextBlock x:Name="SelectedName" FontSize="18" FontWeight="SemiBold"/>
+            <TextBlock x:Name="SelectedDetails" TextWrapping="Wrap" Margin="0,4,0,4"/>
+            <TextBlock x:Name="SelectedNote" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="0,0,0,8"/>
+            <WrapPanel>
+                <Button x:Name="OpenButton" Content="Open installed tool" Padding="10,6" Margin="0,0,8,8" Click="Open_Click"/>
+                <Button x:Name="DumpButton" Content="Open dump in debugger…" Padding="10,6" Margin="0,0,8,8" Click="Dump_Click" Visibility="Collapsed"/>
+                <Button x:Name="LocateButton" Content="Locate executable…" Padding="10,6" Margin="0,0,8,8" Click="Locate_Click"/>
+                <Button x:Name="WebsiteButton" Content="Official website / instructions" Padding="10,6" Margin="0,0,8,8" Click="Website_Click"/>
+                <Button x:Name="InstallButton" Content="Install verified provider" Padding="10,6" Margin="0,0,8,8" Click="Install_Click"/>
+                <Button x:Name="ImportButton" Content="Attach report…" Padding="10,6" Margin="0,0,8,8" Click="Import_Click"/>
+                <Button Content="Open evidence" Padding="10,6" Margin="0,0,8,8" Click="Evidence_Click"/>
+                <Button x:Name="ExportButton" Content="Privacy-reviewed export…" Padding="10,6" Margin="0,0,8,8" Click="Export_Click"/>
+            </WrapPanel>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <ComboBox x:Name="ActionBox" SelectionChanged="Action_Changed" AutomationProperties.Name="Diagnostic or repair action"/>
+                <Button x:Name="RunButton" Grid.Column="1" Content="Run selected action…" Margin="8,0" Padding="10,6" Click="Run_Click"/>
+                <Button x:Name="CancelButton" Grid.Column="2" Content="Cancel diagnostic" Padding="10,6" IsEnabled="False" Click="Cancel_Click"/>
+            </Grid>
+            <TextBox x:Name="CommandPreview" Margin="0,8,0,0" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="85" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Exact command preview"/>
+        </StackPanel>
+        <TextBox x:Name="OutputBox" Grid.Row="4" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Toolkit output"/>
+        <TextBlock x:Name="StatusText" Grid.Row="5" Margin="0,10,0,0" TextWrapping="Wrap" Text="Checking tool availability…"/>
+    </Grid>
+</Window>

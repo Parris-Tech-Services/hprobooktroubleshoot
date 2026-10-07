@@ -93,19 +93,78 @@ function Import-WcdSensorJsonl {
 function Get-WcdLibreHardwareMonitorTelemetry {
     param([Parameter(Mandatory=$true)][System.IO.FileInfo]$File)
     $items=@(Import-WcdSensorJsonl -Path $File.FullName);if(-not $items.Count){return [pscustomobject]@{Available=$false;SourceFile=$File.Name;Provider='LibreHardwareMonitor';Summary=$null;Findings=@()}}
-    $groups=@($items|Group-Object Sample|Sort-Object {[int]$_.Name});$memory=@();$cpu=@();$disk=@();$temp=@();$times=@();$burst=0;$firstBurst=$null;$thermalPositive=0
-    foreach($group in $groups){$sampleItems=@($group.Group);$timestamp=$null;foreach($item in $sampleItems){if($item.CapturedAt){$dto=[datetimeoffset]::MinValue;if([datetimeoffset]::TryParse([string]$item.CapturedAt,[ref]$dto)){$timestamp=$dto.LocalDateTime;break}}};if($null -ne $timestamp){$times+=$timestamp};$memoryValue=$null;$cpuValue=$null;$diskValue=$null;$tempValue=$null;foreach($item in $sampleItems){$value=ConvertTo-TelemetryNumber $item.Value;if($null -eq $value){continue};$ht=[string]$item.HardwareType;$hn=[string]$item.HardwareName;$st=[string]$item.SensorType;$sn=[string]$item.SensorName;if($null -eq $memoryValue -and $st -match '^(?i)Load$' -and (($ht -match '(?i)Memory') -or ($hn -match '(?i)Memory')) -and $sn -match '(?i)Memory|Load'){$memoryValue=$value};if($null -eq $cpuValue -and $st -match '^(?i)Load$' -and (($ht -match '(?i)Cpu') -or ($hn -match '(?i)CPU|Processor')) -and $sn -match '(?i)CPU Total|Total CPU|CPU.*Total'){$cpuValue=$value};if($null -eq $diskValue -and $st -match '^(?i)Load$' -and (($ht -match '(?i)Storage') -or ($hn -match '(?i)SSD|NVMe|Disk|Drive')) -and $sn -match '(?i)Activity'){$diskValue=$value};if($st -match '^(?i)Temperature$' -and (($ht -match '(?i)Cpu') -or ($hn -match '(?i)CPU|Processor')) -and $sn -match '(?i)Package|Core Max|CPU'){if($null -eq $tempValue -or $value -gt $tempValue){$tempValue=$value}};if($sn -match '(?i)Thermal Throttling|PROCHOT|Critical Temperature' -and $value -gt 0){$thermalPositive++}};if($null -ne $memoryValue){$memory+=$memoryValue};if($null -ne $cpuValue){$cpu+=$cpuValue};if($null -ne $diskValue){$disk+=$diskValue};if($null -ne $tempValue){$temp+=$tempValue};if($null -ne $memoryValue -and $null -ne $cpuValue -and $null -ne $diskValue -and $memoryValue -ge 90 -and $cpuValue -ge 95 -and $diskValue -ge 50){$burst++;if($null -eq $firstBurst -and $null -ne $timestamp){$firstBurst=$timestamp}}}
-    $s=[pscustomobject][ordered]@{Provider='LibreHardwareMonitor';SampleCount=$groups.Count;Start=if($times.Count){$times[0].ToString('o')}else{$null};End=if($times.Count){$times[-1].ToString('o')}else{$null};DurationMinutes=if($times.Count -gt 1){[math]::Round(($times[-1]-$times[0]).TotalMinutes,1)}else{$null};MaxSampleGapSeconds=Get-WcdMaxSampleGapSeconds $times;PhysicalMemoryLoadMedianPct=if($memory.Count){[math]::Round((Get-TelemetryPercentile $memory 50),1)}else{$null};PhysicalMemoryLoadP95Pct=if($memory.Count){[math]::Round((Get-TelemetryPercentile $memory 95),1)}else{$null};PhysicalMemoryLoadMaxPct=if($memory.Count){[math]::Round(($memory|Measure-Object -Maximum).Maximum,1)}else{$null};PhysicalMemoryAvailableMinMB=$null;VirtualMemoryLoadMaxPct=$null;PageFileTotalMaxMB=$null;PageFileUsedMaxMB=$null;CpuUsageP95Pct=if($cpu.Count){[math]::Round((Get-TelemetryPercentile $cpu 95),1)}else{$null};CpuUsageMaxPct=if($cpu.Count){[math]::Round(($cpu|Measure-Object -Maximum).Maximum,1)}else{$null};CpuPackageTempMaxC=if($temp.Count){[math]::Round(($temp|Measure-Object -Maximum).Maximum,1)}else{$null};ThermalThrottleSampleCount=$thermalPositive;WheaTotalErrorsMax=$null;DriveRemainingLifeMinPct=$null;DriveFailureSampleCount=0;DriveWarningSampleCount=0;DiskActivityMaxPct=if($disk.Count){[math]::Round(($disk|Measure-Object -Maximum).Maximum,1)}else{$null};GpuRingLimitSampleCount=0;CombinedWorkloadBurstCount=$burst;FirstCombinedWorkloadBurst=if($null -ne $firstBurst){$firstBurst.ToString('o')}else{$null}}
-    $f=New-Object System.Collections.Generic.List[object];Add-WcdCommonSensorFindings -Summary $s -Findings $f -HasMemory ($memory.Count -gt 0) -HasTemperature ($temp.Count -gt 0) -HasWhea $false -HasDriveHealth $false -HasGpuLimits $false
+    $groups=@($items|Group-Object Sample|Sort-Object {[int]$_.Name});$memory=@();$availMB=@();$vm=@();$cpu=@();$disk=@();$temp=@();$driveLife=@();$times=@();$burst=0;$firstBurst=$null;$thermalPositive=0
+    foreach($group in $groups){
+        $sampleItems=@($group.Group);$timestamp=$null
+        foreach($item in $sampleItems){if($item.CapturedAt){$dto=[datetimeoffset]::MinValue;if([datetimeoffset]::TryParse([string]$item.CapturedAt,[ref]$dto)){$timestamp=$dto.LocalDateTime;break}}}
+        if($null -ne $timestamp){$times+=$timestamp}
+        $memoryValue=$null;$cpuValue=$null;$diskValue=$null;$tempValue=$null
+        foreach($item in $sampleItems){
+            $value=ConvertTo-TelemetryNumber $item.Value;if($null -eq $value){continue}
+            $ht=[string]$item.HardwareType;$hn=[string]$item.HardwareName;$st=[string]$item.SensorType;$sn=[string]$item.SensorName
+            if($null -eq $memoryValue -and $st -match '^(?i)Load$' -and (($ht -match '(?i)Memory') -or ($hn -match '(?i)Memory')) -and $sn -match '(?i)Memory|Load'){$memoryValue=$value}
+            if($st -match '^(?i)Data$' -and (($ht -match '(?i)Memory') -or ($hn -match '(?i)Memory')) -and $sn -match '(?i)Available'){$mb=if($value -lt 128){[math]::Round($value*1024,0)}else{[math]::Round($value,0)};$availMB+=$mb}
+            if($st -match '^(?i)Load$' -and $sn -match '(?i)Virtual Memory|Page File|Commit'){$vm+=$value}
+            if($null -eq $cpuValue -and $st -match '^(?i)Load$' -and (($ht -match '(?i)Cpu') -or ($hn -match '(?i)CPU|Processor')) -and $sn -match '(?i)CPU Total|Total CPU|CPU.*Total'){$cpuValue=$value}
+            if($null -eq $diskValue -and $st -match '^(?i)Load$' -and (($ht -match '(?i)Storage') -or ($hn -match '(?i)SSD|NVMe|Disk|Drive')) -and $sn -match '(?i)Activity'){$diskValue=$value}
+            if((($ht -match '(?i)Storage') -or ($hn -match '(?i)SSD|NVMe|Disk|Drive')) -and ($sn -match '(?i)Remaining Life|Wear|Endurance')){$driveLife+=$value}
+            if($st -match '^(?i)Temperature$' -and (($ht -match '(?i)Cpu') -or ($hn -match '(?i)CPU|Processor')) -and $sn -match '(?i)Package|Core Max|CPU|Core'){if($null -eq $tempValue -or $value -gt $tempValue){$tempValue=$value}}
+            if($sn -match '(?i)Thermal Throttling|PROCHOT|Critical Temperature' -and $value -gt 0){$thermalPositive++}
+        }
+        if($null -ne $memoryValue){$memory+=$memoryValue}
+        if($null -ne $cpuValue){$cpu+=$cpuValue}
+        if($null -ne $diskValue){$disk+=$diskValue}
+        if($null -ne $tempValue){$temp+=$tempValue}
+        if($null -ne $memoryValue -and $null -ne $cpuValue -and $null -ne $diskValue -and $memoryValue -ge 90 -and $cpuValue -ge 95 -and $diskValue -ge 50){$burst++;if($null -eq $firstBurst -and $null -ne $timestamp){$firstBurst=$timestamp}}
+    }
+    $hasDriveHealth=($driveLife.Count -gt 0)
+    $minDriveLife=if($hasDriveHealth){[math]::Round(($driveLife|Measure-Object -Minimum).Minimum,1)}else{$null}
+    $driveFailures=if($hasDriveHealth -and $null -ne $minDriveLife -and $minDriveLife -le 0){1}else{0}
+    $driveWarnings=if($hasDriveHealth -and $null -ne $minDriveLife -and $minDriveLife -le 10){1}else{0}
+    $s=[pscustomobject][ordered]@{
+        Provider='LibreHardwareMonitor'
+        SampleCount=$groups.Count
+        Start=if($times.Count){$times[0].ToString('o')}else{$null}
+        End=if($times.Count){$times[-1].ToString('o')}else{$null}
+        DurationMinutes=if($times.Count -gt 1){[math]::Round(($times[-1]-$times[0]).TotalMinutes,1)}else{$null}
+        MaxSampleGapSeconds=Get-WcdMaxSampleGapSeconds $times
+        PhysicalMemoryLoadMedianPct=if($memory.Count){[math]::Round((Get-TelemetryPercentile $memory 50),1)}else{$null}
+        PhysicalMemoryLoadP95Pct=if($memory.Count){[math]::Round((Get-TelemetryPercentile $memory 95),1)}else{$null}
+        PhysicalMemoryLoadMaxPct=if($memory.Count){[math]::Round(($memory|Measure-Object -Maximum).Maximum,1)}else{$null}
+        PhysicalMemoryAvailableMinMB=if($availMB.Count){[math]::Round(($availMB|Measure-Object -Minimum).Minimum,0)}else{$null}
+        VirtualMemoryLoadMaxPct=if($vm.Count){[math]::Round(($vm|Measure-Object -Maximum).Maximum,1)}else{$null}
+        PageFileTotalMaxMB=$null
+        PageFileUsedMaxMB=$null
+        CpuUsageP95Pct=if($cpu.Count){[math]::Round((Get-TelemetryPercentile $cpu 95),1)}else{$null}
+        CpuUsageMaxPct=if($cpu.Count){[math]::Round(($cpu|Measure-Object -Maximum).Maximum,1)}else{$null}
+        CpuPackageTempMaxC=if($temp.Count){[math]::Round(($temp|Measure-Object -Maximum).Maximum,1)}else{$null}
+        ThermalThrottleSampleCount=$thermalPositive
+        WheaTotalErrorsMax=$null
+        DriveRemainingLifeMinPct=$minDriveLife
+        DriveFailureSampleCount=$driveFailures
+        DriveWarningSampleCount=$driveWarnings
+        DiskActivityMaxPct=if($disk.Count){[math]::Round(($disk|Measure-Object -Maximum).Maximum,1)}else{$null}
+        GpuRingLimitSampleCount=0
+        CombinedWorkloadBurstCount=$burst
+        FirstCombinedWorkloadBurst=if($null -ne $firstBurst){$firstBurst.ToString('o')}else{$null}
+    }
+    $f=New-Object System.Collections.Generic.List[object];Add-WcdCommonSensorFindings -Summary $s -Findings $f -HasMemory ($memory.Count -gt 0) -HasTemperature ($temp.Count -gt 0) -HasWhea $false -HasDriveHealth $hasDriveHealth -HasGpuLimits $false
     [pscustomobject][ordered]@{Available=$true;SourceFile=$File.Name;Provider='LibreHardwareMonitor';Summary=$s;Findings=$f.ToArray()}
 }
 
 function Find-WcdSensorEvidenceFile {
     param([Parameter(Mandatory=$true)][string]$EvidencePath)
-    $directory=Get-Item -LiteralPath $EvidencePath -ErrorAction Stop;$local=@(Get-ChildItem -LiteralPath $EvidencePath -File -ErrorAction SilentlyContinue|Where-Object{$_.Name -match '(?i)^(sensors?|hwinfo).*\.csv$|^(sensor|wcd-sensors).*\.jsonl$'}|Sort-Object LastWriteTimeUtc -Descending);if($local.Count){return $local[0]}
+    $directory=Get-Item -LiteralPath $EvidencePath -ErrorAction Stop
+    $local=@(Get-ChildItem -LiteralPath $EvidencePath -File -ErrorAction SilentlyContinue|Where-Object{$_.Name -match '(?i)^(sensors?|hwinfo).*\.csv$|^(sensor|wcd-sensors).*\.jsonl$'}|Sort-Object LastWriteTimeUtc -Descending)
+    if($local.Count){return $local[0]}
     # Desktop deep-capture files live beside snapshot folders. Associate only a nearby capture,
     # avoiding stale telemetry silently contaminating a later incident.
-    $parent=$directory.Parent;if($null -eq $parent){return $null};$start=$directory.CreationTimeUtc.AddHours(-2);$end=$directory.CreationTimeUtc.AddMinutes(15);$nearby=@(Get-ChildItem -LiteralPath $parent.FullName -File -ErrorAction SilentlyContinue|Where-Object{$_.Name -match '(?i)^(sensor|wcd-sensors).*\.jsonl$' -and $_.LastWriteTimeUtc -ge $start -and $_.LastWriteTimeUtc -le $end}|Sort-Object LastWriteTimeUtc -Descending);if($nearby.Count){return $nearby[0]};$null
+    $parent=$directory.Parent;if($null -eq $parent){return $null}
+    $start=$directory.CreationTimeUtc.AddHours(-4)
+    $end=$directory.CreationTimeUtc.AddHours(1)
+    $nearby=@(Get-ChildItem -LiteralPath $parent.FullName -File -ErrorAction SilentlyContinue|Where-Object{$_.Name -match '(?i)^(sensor|wcd-sensors).*\.jsonl$' -and $_.LastWriteTimeUtc -ge $start -and $_.LastWriteTimeUtc -le $end}|Sort-Object LastWriteTimeUtc -Descending)
+    if($nearby.Count){return $nearby[0]}
+    $null
 }
 
 function Get-SensorTelemetry {param([Parameter(Mandatory=$true)][string]$EvidencePath);$file=Find-WcdSensorEvidenceFile -EvidencePath $EvidencePath;if($null -eq $file){return [pscustomobject]@{Available=$false;SourceFile=$null;Provider=$null;Summary=$null;Findings=@()}};if($file.Extension -ieq '.jsonl'){return Get-WcdLibreHardwareMonitorTelemetry -File $file};Get-WcdHWiNFOTelemetry -File $file}
@@ -114,8 +173,8 @@ function Get-PowerTelemetry {
     param([Parameter(Mandatory=$true)][string]$EvidencePath)
     $file=@(Get-ChildItem -LiteralPath $EvidencePath -File -ErrorAction SilentlyContinue|Where-Object{$_.Name -match '(?i)^(systempower|sleepstudy)-report.*\.html$'}|Sort-Object LastWriteTime -Descending|Select-Object -First 1);if(-not $file.Count){return [pscustomobject]@{Available=$false;SourceFile=$null;Summary=$null;Findings=@()}}
     $html=Get-Content -LiteralPath $file[0].FullName -Raw;$m=[regex]::Match($html,'(?s)var\s+LocalSprData\s*=\s*(\{.*?\});\s*(?:var\s+|</script>)');if(-not $m.Success){return [pscustomobject]@{Available=$false;SourceFile=$file[0].Name;Summary=$null;Findings=@()}};$json=[regex]::Replace($m.Groups[1].Value,":\s*'([^']*)'",': "$1"');try{$data=$json|ConvertFrom-Json -ErrorAction Stop}catch{return [pscustomobject]@{Available=$false;SourceFile=$file[0].Name;Summary=$null;Findings=@()}}
-    $ri=$data.ReportInformation;$start=[datetime]::Parse([string]$ri.ReportStartTime).ToUniversalTime();$scan=[datetime]::Parse([string]$ri.ScanTime).ToUniversalTime();$ab=@();$bug=@();$stale=0
-    foreach($x in @($data.ScenarioInstances)){if([int]$x.Type -notin @(9,10)){continue};$t=[datetime]::Parse([string]$x.EntryTimestamp).ToUniversalTime();if($t -lt $start -or $t -gt $scan){$stale++;continue};if([int]$x.Type -eq 9){$ab+=$x}else{$bug+=$x}}
+    $ri=$data.ReportInformation;$start=[datetime]::Parse([string]$ri.ReportStartTime,[System.Globalization.CultureInfo]::InvariantCulture).ToUniversalTime();$scan=[datetime]::Parse([string]$ri.ScanTime,[System.Globalization.CultureInfo]::InvariantCulture).ToUniversalTime();$ab=@();$bug=@();$stale=0
+    foreach($x in @($data.ScenarioInstances)){if([int]$x.Type -notin @(9,10)){continue};$t=[datetime]::Parse([string]$x.EntryTimestamp,[System.Globalization.CultureInfo]::InvariantCulture).ToUniversalTime();if($t -lt $start -or $t -gt $scan){$stale++;continue};if([int]$x.Type -eq 9){$ab+=$x}else{$bug+=$x}}
     $s=[pscustomobject][ordered]@{ReportStartUtc=$start.ToString('o');ScanTimeUtc=$scan.ToString('o');UtcOffsetMinutes=[int]$ri.UtcOffset;InWindowAbnormalShutdownCount=$ab.Count;InWindowBugcheckCount=$bug.Count;OutOfWindowFailureRecordCount=$stale;LatestAbnormalShutdownLocal=$null;LatestAbnormalShutdownOnAc=$null;LatestBugcheckLocal=$null;LatestBugcheckCode=$null}
     if($ab.Count){$x=@($ab|Sort-Object EntryTimestamp|Select-Object -Last 1)[0];$s.LatestAbnormalShutdownLocal=[string]$x.EntryTimestampLocal;$s.LatestAbnormalShutdownOnAc=[bool]$x.OnAc};if($bug.Count){$x=@($bug|Sort-Object EntryTimestamp|Select-Object -Last 1)[0];$s.LatestBugcheckLocal=[string]$x.EntryTimestampLocal;if($null -ne $x.PSObject.Properties['Metadata']){foreach($v in @($x.Metadata.Values)){if([string]$v.Key -eq 'EventLog.BugcheckCode'){$s.LatestBugcheckCode=[string]$v.Value;break}}}}
     $f=New-Object System.Collections.Generic.List[object];if($ab.Count){$power=if($s.LatestAbnormalShutdownOnAc){'AC'}else{'battery'};$f.Add((New-TelemetryFinding 'power-report-abnormal-shutdown' 'Medium' 'High' 'System power report confirms an abnormal shutdown in the report window' "In-window abnormal shutdowns=$($ab.Count); latest=$($s.LatestAbnormalShutdownLocal); power source=$power." 'This precisely confirms an unclean incident boundary; it records the outcome rather than proving cause.' 'Correlate with final pre-incident System events and any sensor/ETW capture.'))};if($bug.Count){$f.Add((New-TelemetryFinding 'power-report-bugcheck' 'High' 'High' 'System power report contains an in-window bugcheck' "In-window bugchecks=$($bug.Count); latest=$($s.LatestBugcheckLocal); code=$($s.LatestBugcheckCode)." 'A true bugcheck provides a stronger diagnostic path than a generic reset.' 'Preserve and analyse the matching dump.'))};if($stale -gt 0){$f.Add((New-TelemetryFinding 'power-report-stale-failure-records' 'Info' 'High' 'Power report contains failure records outside its declared report window' "Failure records outside $($ri.ReportStartTime) to $($ri.ScanTime): $stale." 'Historical, cloned-image or clock-corrupted records can contaminate naive crash counts; Crash Doctor excludes them.' 'Use the report window and current-machine timestamps as hard boundaries.'))}

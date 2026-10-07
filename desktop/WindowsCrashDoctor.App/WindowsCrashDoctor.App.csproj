@@ -28,6 +28,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="../../docs/TOOLKIT_CATALOG.html" LogicalName="WCD.Toolkit.Catalog.html" />
+    <EmbeddedResource Include="../../windows-crash-doctor/integrations/toolkit.tsv" LogicalName="WCD.Toolkit.Data.tsv" />
+    <EmbeddedResource Include="../../windows-crash-doctor/integrations/toolkit-actions.json" LogicalName="WCD.Toolkit.Actions.json" />
     <EmbeddedResource Include="../../scripts/collect-diagnostics.ps1" LogicalName="WCD.Engine.scripts.collect-diagnostics.ps1" />
     <EmbeddedResource Include="../../scripts/check-public-evidence.ps1" LogicalName="WCD.Engine.scripts.check-public-evidence.ps1" />
     <EmbeddedResource Include="../../windows-crash-doctor/CrashDoctor.psm1" LogicalName="WCD.Engine.windows-crash-doctor.CrashDoctor.psm1" />

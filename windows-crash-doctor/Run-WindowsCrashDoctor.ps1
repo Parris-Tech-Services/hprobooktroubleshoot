@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$OutputRoot = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Windows Crash Doctor Results'),
+    [string]$OutputRoot = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Windows Doctor Results'),
     [int]$EventHours = 12
 )
 
@@ -15,7 +15,7 @@ function Test-WcdAdministrator {
 
 if (-not (Test-WcdAdministrator)) {
     if ([string]::IsNullOrWhiteSpace($PSCommandPath)) {
-        throw 'Windows Crash Doctor needs Administrator rights for the full diagnostic collection.'
+        throw 'Windows Doctor needs Administrator rights for the full diagnostic collection.'
     }
 
     $argumentList = @(
@@ -39,7 +39,7 @@ $integrationManager = Join-Path $PSScriptRoot 'Manage-Integrations.ps1'
 
 foreach ($required in @($collector, $crashDoctor, $selfTest, $integrationSelfTest, $integrationManager)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
-        throw "Required Windows Crash Doctor file is missing: $required"
+        throw "Required Windows Doctor file is missing: $required"
     }
 }
 
@@ -69,7 +69,7 @@ function Invoke-WcdLogged {
     }
 }
 
-Write-WcdStep 'Windows Crash Doctor one-click test starting.'
+Write-WcdStep 'Windows Doctor one-click test starting.'
 Write-WcdStep 'Running built-in regression self-test.'
 Invoke-WcdLogged { & $selfTest -RepositoryMode }
 
@@ -115,6 +115,6 @@ Start-Process -FilePath 'explorer.exe' -ArgumentList ('"{0}"' -f $newSnapshot.Fu
 Start-Process -FilePath 'notepad.exe' -ArgumentList ('"{0}"' -f $report) | Out-Null
 
 Write-Host ''
-Write-Host 'Windows Crash Doctor: PASS' -ForegroundColor Green
+Write-Host 'Windows Doctor: PASS' -ForegroundColor Green
 Write-Host "Your report is here: $report" -ForegroundColor Green
 Write-Host 'The results folder and report have been opened for you.'

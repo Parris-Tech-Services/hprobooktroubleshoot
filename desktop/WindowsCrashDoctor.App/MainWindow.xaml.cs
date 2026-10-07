@@ -36,9 +36,15 @@ public partial class MainWindow : Window
         _autoRun = autoRun;
         _metrics = new SystemMetricsService(_powerShell);
         _settings = _history.LoadSettings();
-        _outputRoot = Path.Combine(
+        var primaryResults = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            "Windows Doctor Results");
+        var legacyResults = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
             "Windows Crash Doctor Results");
+        _outputRoot = Directory.Exists(primaryResults) || !Directory.Exists(legacyResults)
+            ? primaryResults
+            : legacyResults;
         Directory.CreateDirectory(_outputRoot);
 
         _metricsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
@@ -103,7 +109,7 @@ public partial class MainWindow : Window
     private void RelaunchElevated(string? argument = null)
     {
         var executable = Environment.ProcessPath
-            ?? throw new InvalidOperationException("Unable to locate the Windows Crash Doctor executable.");
+            ?? throw new InvalidOperationException("Unable to locate the Windows Doctor executable.");
         var psi = new ProcessStartInfo(executable)
         {
             UseShellExecute = true,
@@ -119,7 +125,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this,
                 "The diagnostic run was not started because Administrator permission was not granted.",
-                "Windows Crash Doctor",
+                "Windows Doctor",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -145,7 +151,7 @@ public partial class MainWindow : Window
         try
         {
             _engine.EnsureExtracted();
-            AppendLog("Windows Crash Doctor v2 diagnosis started.");
+            AppendLog("Windows Doctor v2 diagnosis started.");
             AppendLog("Evidence stays local on this PC unless you choose to export it.");
             var preflight = await RefreshPreflightForRunAsync();
             if (preflight.BlockingCount > 0)
@@ -154,11 +160,25 @@ public partial class MainWindow : Window
             DiagnosticProgress.Value = 15;
             DiagnosticStatusText.Text = "Collecting Windows, firmware, storage and power evidence…";
             var before = Directory.GetDirectories(_outputRoot, "HPProBook-*").ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var collectArgs = new List<string> { "-OutputRoot", _outputRoot, "-EventHours", "12" };
+            var recentSensor = Directory.GetFiles(_outputRoot, "sensor-*.jsonl")
+                .Concat(Directory.GetFiles(_outputRoot, "wcd-sensors-*.jsonl"))
+                .Select(f => new FileInfo(f))
+                .Where(f => f.LastWriteTimeUtc >= DateTime.UtcNow.AddHours(-4))
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .FirstOrDefault();
+            if (recentSensor is not null)
+            {
+                collectArgs.Add("-SensorJsonlPath");
+                collectArgs.Add(recentSensor.FullName);
+                AppendLog($"Attaching deep sensor session: {recentSensor.Name}");
+            }
+
             var collect = await _powerShell.RunFileAsync(
                 _engine.CollectorPath,
-                new[] { "-OutputRoot", _outputRoot, "-EventHours", "12" },
+                collectArgs.ToArray(),
                 AppendLog,
-                options: new ProcessRunOptions(TimeSpan.FromMinutes(4), OperationId: "full-collector"));
+                options: new ProcessRunOptions(TimeSpan.FromMinutes(8), OperationId: "full-collector"));
             if (!collect.Succeeded)
                 throw new InvalidOperationException($"The diagnostic collector ended as {collect.Status}: {collect.FailureReason}");
 
@@ -177,9 +197,9 @@ public partial class MainWindow : Window
                 _engine.CrashDoctorPath,
                 new[] { "-EvidencePath", snapshot.FullName, "-OutputDirectory", snapshot.FullName },
                 AppendLog,
-                options: new ProcessRunOptions(TimeSpan.FromMinutes(2), OperationId: "rules-analysis"));
+                options: new ProcessRunOptions(TimeSpan.FromMinutes(5), OperationId: "rules-analysis"));
             if (!analyse.Succeeded)
-                throw new InvalidOperationException($"Crash Doctor analysis ended as {analyse.Status}: {analyse.FailureReason}");
+                throw new InvalidOperationException($"Windows Doctor analysis ended as {analyse.Status}: {analyse.FailureReason}");
 
             DiagnosticProgress.Value = 88;
             DiagnosticStatusText.Text = "Fingerprinting, comparing and saving the run ledger…";
@@ -209,7 +229,7 @@ public partial class MainWindow : Window
         {
             DiagnosticStatusText.Text = "Diagnosis did not complete";
             AppendLog("FAILED: " + ex.Message);
-            MessageBox.Show(this, _redaction.RedactForLog(ex.Message), "Windows Crash Doctor", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, _redaction.RedactForLog(ex.Message), "Windows Doctor", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -273,7 +293,7 @@ public partial class MainWindow : Window
 
         HealthHeadline.Text = health;
         HealthExplanation.Text = high > 0
-            ? $"Crash Doctor found {high} high-priority evidence signal{(high == 1 ? "" : "s")}. These are leads backed by captured evidence, not automatic claims of root cause."
+            ? $"Windows Doctor found {high} high-priority evidence signal{(high == 1 ? "" : "s")}. These are leads backed by captured evidence, not automatic claims of root cause."
             : medium > 0
                 ? $"No critical/high signal in this snapshot. {medium} medium-priority lead{(medium == 1 ? "" : "s")} should be reviewed in a controlled test sequence."
                 : "The captured window contains no high-priority signal. Missing evidence is still treated as unknown rather than healthy.";
@@ -496,7 +516,7 @@ public partial class MainWindow : Window
     {
         if (_latestEvidencePath is null)
         {
-            MessageBox.Show(this, "Run a diagnosis first.", "Windows Crash Doctor", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "Run a diagnosis first.", "Windows Doctor", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         var report = Path.Combine(_latestEvidencePath, "crash-doctor-report.md");
@@ -532,6 +552,35 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show(this, _redaction.RedactForLog(ex.Message), "Dump analysis", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async void ScanCrashes_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _engine.EnsureExtracted();
+            var output = Path.Combine(_outputRoot, "CrashHistory-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+            Directory.CreateDirectory(output);
+            DiagnosticLog.Clear();
+            DiagnosticStatusText.Text = "Scanning for system crash dumps…";
+            MainTabs.SelectedIndex = 1;
+            var result = await _powerShell.RunFileAsync(
+                _engine.CrashDoctorPath,
+                new[] { "-HistoricalCrashes", "-OutputDirectory", output },
+                AppendLog,
+                options: new ProcessRunOptions(TimeSpan.FromMinutes(2), OperationId: "scan-crashes"));
+            if (!result.Succeeded) throw new InvalidOperationException($"Crash scan ended as {result.Status}: {result.FailureReason}");
+            DiagnosticStatusText.Text = $"Crash scan complete • {result.Duration:g}";
+            var report = Path.Combine(output, "crash-history.md");
+            if (File.Exists(report))
+            {
+                OpenPath(report);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, _redaction.RedactForLog(ex.Message), "Crash scan", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -668,7 +717,7 @@ public partial class MainWindow : Window
     {
         if (_latestEvidencePath is null || !Directory.Exists(_latestEvidencePath))
         {
-            MessageBox.Show(this, "There is no completed diagnostic run to export yet.", "Windows Crash Doctor", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "There is no completed diagnostic run to export yet.", "Windows Doctor", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 

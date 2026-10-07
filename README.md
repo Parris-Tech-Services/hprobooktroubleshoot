@@ -24,6 +24,7 @@ The desktop preview includes:
 - local diagnostic-run history;
 - native `.dmp` / `.mdmp` structural analysis through the Crash Doctor dump parser;
 - open-source provider installation/status;
+- a native searchable technician toolkit from **Integrations → Technician toolkit** with installed-tool detection, launchers, diagnostic/repair handoffs, report attachments and reviewed exports;
 - local diagnostic ZIP export with an explicit sensitivity warning; structured privacy review/redaction is still planned;
 - light and dark themes;
 - a self-contained `WindowsCrashDoctor.exe` build with the core PowerShell engine embedded; the audit tracks an outstanding telemetry-module packaging gap.
@@ -54,6 +55,8 @@ For a one-click preview install that creates a Desktop shortcut, download and do
 - documented HP ProBook evidence and controlled test plan.
 
 The **[repository engineering audit](docs/REPOSITORY_AUDIT.md)** is the quality/risk source of truth and identifies the current release blockers. Planned capabilities are tracked in the **[100-item Windows Crash Doctor roadmap](docs/ROADMAP_100.md)**, while cross-repository engineering adaptations are tracked separately in the **[GitHub Borrow Roadmap](docs/GITHUB_BORROW_ROADMAP.md)**.
+
+The **[technician toolkit integration TODO](docs/TOOLKIT_INTEGRATION_TODO.md)** covers Windows repair, hardware tests, recovery, ITAD, networks, security, remote support and administration tools. The native desktop toolkit detects installed executables, lets you locate portable tools, opens vendor instructions, runs selected diagnostics with captured output, opens selected repairs in a visible console, and attaches external reports with SHA-256 provenance. See **[implemented capabilities and remaining work](docs/TOOLKIT_IMPLEMENTATION.md)**. Maintain the canonical entries in `windows-crash-doctor/integrations/toolkit.tsv` and curated recipes in `scripts/build-toolkit-actions.py`; run both `python scripts/build-toolkit-actions.py` and `python scripts/build-toolkit-catalog.py` before building. The **[HTML catalog](docs/TOOLKIT_CATALOG.html)** remains available for offline review.
 
 ## Command-line preview install
 

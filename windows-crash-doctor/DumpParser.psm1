@@ -33,6 +33,99 @@ $script:MiniDumpStreamNames = @{
     24 = 'ThreadNamesStream'
 }
 
+$script:KnownBugCheckNames = @{
+    '0xA'        = 'IRQL_NOT_LESS_OR_EQUAL'
+    '0x1A'       = 'MEMORY_MANAGEMENT'
+    '0x1E'       = 'KMODE_EXCEPTION_NOT_HANDLED'
+    '0x24'       = 'NTFS_FILE_SYSTEM'
+    '0x3B'       = 'SYSTEM_SERVICE_EXCEPTION'
+    '0x4E'       = 'PFN_LIST_CORRUPT'
+    '0x50'       = 'PAGE_FAULT_IN_NONPAGED_AREA'
+    '0x77'       = 'KERNEL_STACK_INPAGE_ERROR'
+    '0x7A'       = 'KERNEL_DATA_INPAGE_ERROR'
+    '0x7E'       = 'SYSTEM_THREAD_EXCEPTION_NOT_HANDLED'
+    '0x7F'       = 'UNEXPECTED_KERNEL_MODE_TRAP'
+    '0x9C'       = 'MACHINE_CHECK_EXCEPTION'
+    '0x9F'       = 'DRIVER_POWER_STATE_FAILURE'
+    '0xBE'       = 'ATTEMPTED_WRITE_TO_READONLY_MEMORY'
+    '0xC2'       = 'BAD_POOL_CALLER'
+    '0xC4'       = 'DRIVER_VERIFIER_DETECTED_VIOLATION'
+    '0xC5'       = 'DRIVER_CORRUPTED_EXPOOL'
+    '0xCE'       = 'DRIVER_UNLOADED_WITHOUT_CANCELLING_PENDING_OPERATIONS'
+    '0xD1'       = 'DRIVER_IRQL_NOT_LESS_OR_EQUAL'
+    '0xED'       = 'UNMOUNTABLE_BOOT_VOLUME'
+    '0xEF'       = 'CRITICAL_PROCESS_DIED'
+    '0xF7'       = 'DRIVER_OVERRAN_STACK_BUFFER'
+    '0x101'      = 'CLOCK_WATCHDOG_TIMEOUT'
+    '0x109'      = 'CRITICAL_STRUCTURE_CORRUPTION'
+    '0x116'      = 'VIDEO_TDR_FAILURE'
+    '0x117'      = 'VIDEO_TDR_TIMEOUT_DETECTED'
+    '0x119'      = 'VIDEO_SCHEDULER_INTERNAL_ERROR'
+    '0x124'      = 'WHEA_UNCORRECTABLE_ERROR'
+    '0x12B'      = 'FAULTY_HARDWARE_CORRUPTED_PAGE'
+    '0x133'      = 'DPC_WATCHDOG_VIOLATION'
+    '0x139'      = 'KERNEL_SECURITY_CHECK_FAILURE'
+    '0x13A'      = 'KERNEL_MODE_HEAP_CORRUPTION'
+    '0x144'      = 'BUGCODE_USB3_DRIVER'
+    '0x154'      = 'UNEXPECTED_STORE_EXCEPTION'
+    '0x164'      = 'INTERNAL_POWER_ERROR'
+    '0x192'      = 'KERNEL_AUTO_BOOST_LOCK_ACQUISITION_WITH_RAISED_IRQL'
+    '0x1A1'      = 'WIN32K_CALLOUT_WATCHDOG_BUGCHECK'
+    '0x1C6'      = 'FAST_ERESOURCE_PRECONDITION_VIOLATION'
+    '0x1CA'      = 'SYNTHETIC_WATCHDOG_TIMEOUT'
+    '0x1D5'      = 'DRIVER_PNP_WATCHDOG'
+    '0xC0000005' = 'STATUS_ACCESS_VIOLATION'
+    '0xC00000FD' = 'STATUS_STACK_OVERFLOW'
+}
+
+function Get-CrashDoctorBugCheckName {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)]$Code)
+
+    $u = [uint32]0
+    if ($Code -is [string]) {
+        $clean = $Code.Trim()
+        if ($clean.StartsWith('0x', [StringComparison]::OrdinalIgnoreCase)) {
+            $clean = $clean.Substring(2)
+        }
+        $parsed = [uint32]0
+        if ([uint32]::TryParse($clean, [Globalization.NumberStyles]::HexNumber, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+            $u = $parsed
+        }
+    }
+    elseif ($Code -is [uint32]) {
+        $u = $Code
+    }
+    else {
+        $bytes = [BitConverter]::GetBytes([int64]$Code)
+        $u = [BitConverter]::ToUInt32($bytes, 0)
+    }
+
+    $key = ('0x{0:X}' -f $u).ToUpperInvariant()
+    if ($script:KnownBugCheckNames.ContainsKey($key)) {
+        return $script:KnownBugCheckNames[$key]
+    }
+    return ('0x{0:X8}' -f $u)
+}
+
+function Find-CrashDoctorFaultingModule {
+    param($DumpInfo)
+    if ($null -eq $DumpInfo) { return $null }
+    if (-not ($DumpInfo.PSObject.Properties.Name -contains 'Exception') -or $null -eq $DumpInfo.Exception) { return $null }
+    if (-not ($DumpInfo.Exception.PSObject.Properties.Name -contains 'ExceptionAddress') -or $null -eq $DumpInfo.Exception.ExceptionAddress) { return $null }
+    $addr = [uint64]$DumpInfo.Exception.ExceptionAddress
+    if ($addr -eq 0) { return $null }
+    if (-not ($DumpInfo.PSObject.Properties.Name -contains 'Modules') -or $null -eq $DumpInfo.Modules) { return $null }
+    foreach ($m in @($DumpInfo.Modules)) {
+        $base = [uint64]$m.BaseOfImage
+        $size = [uint64]$m.SizeOfImage
+        if ($addr -ge $base -and $addr -lt ($base + $size)) {
+            return $m.Name
+        }
+    }
+    return $null
+}
+
 function Read-CrashDoctorBytes {
     [CmdletBinding()]
     param(
@@ -444,4 +537,186 @@ function Get-CrashDoctorDumpInfo {
     }
 }
 
-Export-ModuleMember -Function Get-CrashDoctorDumpInfo
+function Get-CrashDoctorSystemCrashHistory {
+    [CmdletBinding()]
+    param(
+        [string[]]$SearchPaths,
+        [int]$MaxEntries = 50
+    )
+
+    if ($null -eq $SearchPaths -or $SearchPaths.Count -eq 0) {
+        $SearchPaths = @(
+            (Join-Path $env:SystemRoot 'Minidump'),
+            (Join-Path $env:SystemRoot 'MEMORY.DMP'),
+            (Join-Path $env:SystemDrive 'CrashDumps'),
+            (Join-Path $env:LOCALAPPDATA 'CrashDumps'),
+            (Join-Path $env:SystemRoot 'LiveKernelReports')
+        )
+    }
+
+    $dumpFiles = New-Object System.Collections.Generic.List[System.IO.FileInfo]
+    foreach ($target in $SearchPaths) {
+        if ([string]::IsNullOrWhiteSpace($target)) { continue }
+        if (Test-Path -LiteralPath $target -PathType Leaf) {
+            $item = Get-Item -LiteralPath $target -ErrorAction SilentlyContinue
+            if ($item -and $item.Extension -match '(?i)^\.(dmp|mdmp)$') {
+                $dumpFiles.Add($item)
+            }
+        }
+        elseif (Test-Path -LiteralPath $target -PathType Container) {
+            $files = @(Get-ChildItem -LiteralPath $target -File -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Extension -match '(?i)^\.(dmp|mdmp)$' })
+            foreach ($f in $files) { $dumpFiles.Add($f) }
+        }
+    }
+
+    $crashes = New-Object System.Collections.Generic.List[object]
+    $seenPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($file in $dumpFiles) {
+        if (-not $seenPaths.Add($file.FullName)) { continue }
+
+        try {
+            $info = Get-CrashDoctorDumpInfo -Path $file.FullName
+            $crashTime = $file.LastWriteTimeUtc
+            $hasHeader = ($info.PSObject.Properties.Name -contains 'Header') -and ($null -ne $info.Header)
+            $hasException = ($info.PSObject.Properties.Name -contains 'Exception') -and ($null -ne $info.Exception)
+
+            if ($info.Format -eq 'MiniDump' -and $hasHeader -and ($info.Header.PSObject.Properties.Name -contains 'TimeDateStamp') -and $info.Header.TimeDateStamp -and $info.Header.TimeDateStamp -gt 0) {
+                try {
+                    $crashTime = [DateTimeOffset]::FromUnixTimeSeconds([int64]$info.Header.TimeDateStamp).UtcDateTime
+                } catch { }
+            }
+
+            $bugCheckCode = [uint32]0
+            $params = @()
+            if ($info.Format -eq 'KernelCrashDump' -and $hasHeader) {
+                $bugCheckCode = [uint32]$info.Header.BugCheckCode
+                $params = @(
+                    [uint64]$info.Header.BugCheckParameter1,
+                    [uint64]$info.Header.BugCheckParameter2,
+                    [uint64]$info.Header.BugCheckParameter3,
+                    [uint64]$info.Header.BugCheckParameter4
+                )
+            }
+            elseif ($info.Format -eq 'MiniDump' -and $hasException) {
+                $bugCheckCode = [uint32]$info.Exception.ExceptionCode
+                if (($info.Exception.PSObject.Properties.Name -contains 'Parameters') -and $info.Exception.Parameters) {
+                    $params = @($info.Exception.Parameters)
+                }
+            }
+
+            $bugCheckName = Get-CrashDoctorBugCheckName -Code $bugCheckCode
+            $faultingModule = Find-CrashDoctorFaultingModule -DumpInfo $info
+            $exceptionAddressHex = if ($hasException -and ($info.Exception.PSObject.Properties.Name -contains 'ExceptionAddress') -and $info.Exception.ExceptionAddress) {
+                '0x{0:X16}' -f [uint64]$info.Exception.ExceptionAddress
+            } else { $null }
+
+            $crashes.Add([pscustomobject][ordered]@{
+                Path                = $file.FullName
+                FileName            = $file.Name
+                FileSize            = $file.Length
+                CrashTimeUtc        = $crashTime.ToString('o')
+                CrashTimeLocal      = $crashTime.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss')
+                Format              = $info.Format
+                Architecture        = $info.Architecture
+                BugCheckCode        = ('0x{0:X8}' -f $bugCheckCode)
+                BugCheckName        = $bugCheckName
+                BugCheckParameters  = @($params | ForEach-Object { '0x{0:X}' -f [uint64]$_ })
+                FaultingModule      = $faultingModule
+                ExceptionAddress    = $exceptionAddressHex
+                Valid               = $true
+                Error               = $null
+            })
+        }
+        catch {
+            $crashes.Add([pscustomobject][ordered]@{
+                Path                = $file.FullName
+                FileName            = $file.Name
+                FileSize            = $file.Length
+                CrashTimeUtc        = $file.LastWriteTimeUtc.ToString('o')
+                CrashTimeLocal      = $file.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')
+                Format              = 'Unknown'
+                Architecture        = $null
+                BugCheckCode        = $null
+                BugCheckName        = $null
+                BugCheckParameters  = @()
+                FaultingModule      = $null
+                ExceptionAddress    = $null
+                Valid               = $false
+                Error               = $_.Exception.Message
+            })
+        }
+    }
+
+    $sorted = @($crashes | Sort-Object { [datetime]$_.CrashTimeUtc } -Descending)
+    if ($sorted.Count -gt $MaxEntries) {
+        $sorted = $sorted[0..($MaxEntries - 1)]
+    }
+    return $sorted
+}
+
+function ConvertTo-CrashDoctorCrashHistoryMarkdown {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)]$Crashes)
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('# Windows Doctor historical crash summary')
+    $lines.Add('')
+
+    $crashList = @($Crashes)
+    if ($crashList.Count -eq 0) {
+        $lines.Add('No crash dumps or minidumps were discovered in standard crash locations (`C:\Windows\Minidump`, `C:\Windows\MEMORY.DMP`, etc.).')
+        $lines.Add('')
+        $lines.Add('> A lack of dump files is reassuring but does not guarantee zero crashes if crash dump capture was disabled or failing.')
+        return ($lines -join [Environment]::NewLine)
+    }
+
+    $lines.Add("- Discovered crash dumps: **$($crashList.Count)**")
+    $validCount = @($crashList | Where-Object { $_.Valid }).Count
+    $lines.Add("- Valid parsed dumps: **$validCount**")
+    $latest = $crashList[0]
+    $lines.Add("- Most recent crash: **$($latest.CrashTimeLocal)** ($($latest.BugCheckName))")
+    $lines.Add('')
+
+    $lines.Add('## Crash index')
+    $lines.Add('')
+    $lines.Add('| Date / Time (Local) | BugCheck Code | BugCheck Name | Faulting Module | Dump File | Size |')
+    $lines.Add('|---|---|---|---|---|---:|')
+    foreach ($c in $crashList) {
+        $name = if ($c.BugCheckName) { $c.BugCheckName.Replace('|', '\|') } else { 'Unknown' }
+        $code = if ($c.BugCheckCode) { '`{0}`' -f $c.BugCheckCode } else { '—' }
+        $mod = if ($c.FaultingModule) { '`{0}`' -f $c.FaultingModule } else { '—' }
+        $sizeKb = [math]::Round($c.FileSize / 1024, 0)
+        $lines.Add("| $($c.CrashTimeLocal) | $code | $name | $mod | $($c.FileName) | $sizeKb KB |")
+    }
+
+    $lines.Add('')
+    $lines.Add('## Detailed crash records')
+    $lines.Add('')
+    foreach ($c in $crashList) {
+        $lines.Add("### $($c.FileName) - $($c.CrashTimeLocal)")
+        $lines.Add('')
+        $lines.Add(('- **Path:** `{0}`' -f $c.Path))
+        $lines.Add("- **Format / Architecture:** $($c.Format) / $($c.Architecture)")
+        $lines.Add(('- **BugCheck:** {0} (`{1}`)' -f $c.BugCheckName, $c.BugCheckCode))
+        if ($c.BugCheckParameters -and $c.BugCheckParameters.Count -gt 0) {
+            $lines.Add("- **Parameters:** $($c.BugCheckParameters -join ', ')")
+        }
+        if ($c.FaultingModule) {
+            $lines.Add(('- **Candidate faulting module:** `{0}`' -f $c.FaultingModule))
+        }
+        if ($c.ExceptionAddress) {
+            $lines.Add(('- **Exception address:** `{0}`' -f $c.ExceptionAddress))
+        }
+        if (-not $c.Valid -and $c.Error) {
+            $lines.Add("- **Parse error:** $($c.Error)")
+        }
+        $lines.Add('')
+    }
+
+    $lines.Add('> Note: A driver identified in a crash stack is an active participant or victim at the moment of the crash; it is not automatically the sole root cause. Use bugcheck parameters and system event context for confirmation.')
+    return ($lines -join [Environment]::NewLine)
+}
+
+Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule

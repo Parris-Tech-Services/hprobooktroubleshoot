@@ -11,7 +11,7 @@ $apiUrl = "https://api.github.com/repos/$repo/releases/tags/$tag"
 $installRoot = Join-Path $env:LOCALAPPDATA 'WindowsCrashDoctor\app'
 $exePath = Join-Path $installRoot 'WindowsCrashDoctor.exe'
 $desktop = [Environment]::GetFolderPath('Desktop')
-$shortcutPath = Join-Path $desktop 'Windows Crash Doctor.lnk'
+$shortcutPath = Join-Path $desktop 'Windows Doctor.lnk'
 $tempRoot = Join-Path $env:TEMP ('WindowsCrashDoctorInstall-' + [guid]::NewGuid().ToString('N'))
 $tempExe = Join-Path $tempRoot 'WindowsCrashDoctor.exe'
 $tempHash = Join-Path $tempRoot 'WindowsCrashDoctor.exe.sha256'
@@ -79,7 +79,7 @@ try {
     $shortcut = $wsh.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $exePath
     $shortcut.WorkingDirectory = $installRoot
-    $shortcut.Description = 'Windows Crash Doctor'
+    $shortcut.Description = 'Windows Doctor'
     $shortcut.Save()
 
     Write-Host "Installed verified build: $exePath" -ForegroundColor Green

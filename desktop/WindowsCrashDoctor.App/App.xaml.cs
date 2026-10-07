@@ -23,5 +23,8 @@ public partial class App : Application
         var window = new MainWindow(autoRun);
         MainWindow = window;
         window.Show();
+        if (e.Args.Any(a => string.Equals(a, "--toolkit", StringComparison.OrdinalIgnoreCase)))
+            new ToolkitWindow(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                "Windows Crash Doctor Results")) { Owner = window }.Show();
     }
 }

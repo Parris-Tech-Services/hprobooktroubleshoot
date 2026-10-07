@@ -25,3 +25,11 @@ windows-crash-doctor/.tools/
 Thumbs.db
 .DS_Store
 .vscode/
+
+# Build and runtime outputs
+**/bin/
+**/obj/
+**/dist/
+*.user
+*.suo
+CrashHistory-*/

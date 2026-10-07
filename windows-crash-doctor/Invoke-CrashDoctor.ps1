@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory = $true, ParameterSetName = 'Evidence')] [string]$EvidencePath,
     [Parameter(Mandatory = $true, ParameterSetName = 'Dump')] [string]$DumpPath,
+    [Parameter(Mandatory = $true, ParameterSetName = 'Crashes')] [switch]$HistoricalCrashes,
     [string]$OutputDirectory,
     [switch]$PassThru
 )
@@ -144,12 +145,36 @@ if ($PSCmdlet.ParameterSetName -eq 'Dump') {
     return
 }
 
+if ($PSCmdlet.ParameterSetName -eq 'Crashes') {
+    $dumpModulePath = Join-Path $PSScriptRoot 'DumpParser.psm1'
+    Import-Module $dumpModulePath -Force
+
+    if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = (Get-Location).Path }
+    if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) { New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null }
+
+    $crashes = @(Get-CrashDoctorSystemCrashHistory)
+    $markdown = ConvertTo-CrashDoctorCrashHistoryMarkdown -Crashes $crashes
+    $markdownPath = Join-Path $OutputDirectory 'crash-history.md'
+    $jsonPath = Join-Path $OutputDirectory 'crash-history.json'
+
+    $markdown | Out-File -LiteralPath $markdownPath -Encoding utf8 -Width 500
+    $crashes | ConvertTo-Json -Depth 10 | Out-File -LiteralPath $jsonPath -Encoding utf8 -Width 500
+
+    Write-Host "Windows Doctor crash history report: $markdownPath"
+    Write-Host "Machine-readable crash history: $jsonPath"
+    Write-Host ("Discovered {0} crash dump(s)." -f $crashes.Count)
+    if ($PassThru) { return $crashes }
+    return
+}
+
 $coreModulePath = Join-Path $PSScriptRoot 'CrashDoctor.psm1'
 $telemetryModulePath = Join-Path $PSScriptRoot 'TelemetryAnalysis.psm1'
 $registryModulePath = Join-Path $PSScriptRoot 'DiagnosticRegistry.psm1'
+$dumpModulePath = Join-Path $PSScriptRoot 'DumpParser.psm1'
 Import-Module $coreModulePath -Force
 if (Test-Path -LiteralPath $telemetryModulePath -PathType Leaf) { Import-Module $telemetryModulePath -Force }
 Import-Module $registryModulePath -Force
+if (Test-Path -LiteralPath $dumpModulePath -PathType Leaf) { Import-Module $dumpModulePath -Force }
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = $EvidencePath }
 if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) { New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null }
@@ -178,6 +203,46 @@ if (Get-Command Invoke-CrashDoctorTelemetryAnalysis -ErrorAction SilentlyContinu
     if ($telemetry.Available) { $report = Add-CrashDoctorTelemetryToReport -Report $report -Telemetry $telemetry }
 }
 
+$crashes = @()
+if (Get-Command Get-CrashDoctorSystemCrashHistory -ErrorAction SilentlyContinue) {
+    try {
+        $searchPaths = @($EvidencePath)
+        $minidumpDir = Join-Path $env:SystemRoot 'Minidump'
+        if (Test-Path -LiteralPath $minidumpDir -PathType Container) { $searchPaths += $minidumpDir }
+        $memoryDmp = Join-Path $env:SystemRoot 'MEMORY.DMP'
+        if (Test-Path -LiteralPath $memoryDmp -PathType Leaf) { $searchPaths += $memoryDmp }
+        $crashes = @(Get-CrashDoctorSystemCrashHistory -SearchPaths $searchPaths)
+    } catch { }
+}
+
+$report | Add-Member -NotePropertyName CrashHistory -NotePropertyValue $crashes -Force
+
+if ($crashes.Count -gt 0) {
+    $validCrashes = @($crashes | Where-Object { $_.Valid })
+    if ($validCrashes.Count -gt 0) {
+        $latest = $validCrashes[0]
+        $recent = @($validCrashes | Where-Object {
+            try { [datetime]$_.CrashTimeUtc -ge (Get-Date).ToUniversalTime().AddDays(-14) } catch { $false }
+        })
+        $sev = if ($recent.Count -gt 0) { 'High' } else { 'Medium' }
+        $evidenceText = "{0} crash dump(s) discovered; latest crash {1} ({2}) with bugcheck {3}." -f $crashes.Count, $latest.CrashTimeLocal, $latest.BugCheckName, $latest.BugCheckCode
+        if ($latest.FaultingModule) {
+            $evidenceText += " Candidate faulting module: $($latest.FaultingModule)."
+        }
+
+        $finding = [pscustomobject][ordered]@{
+            Id             = 'bsod-history-discovered'
+            Severity       = $sev
+            Confidence     = 'High'
+            Title          = ("Historical crash dump detected ({0} dump{1})" -f $crashes.Count, $(if ($crashes.Count -eq 1) { '' } else { 's' }))
+            Evidence       = $evidenceText
+            Interpretation = 'The system has experienced one or more kernel bugchecks. The dump preserves register and memory state at the moment Windows halted execution; a driver identified on the stack is an active participant or victim, not automatically the ultimate root cause.'
+            NextStep       = 'Review the bugcheck code, parameters and faulting stack in the Historical BSOD section; cross-reference with device driver updates or hardware error events.'
+        }
+        $report.Findings = @($report.Findings) + @($finding)
+    }
+}
+
 $markdown = ConvertTo-CrashDoctorMarkdown -Report $report
 $product = $report.Product
 $productHeader = @(
@@ -195,6 +260,10 @@ $markdown += [Environment]::NewLine + [Environment]::NewLine + $productHeader
 if ($null -ne $telemetry -and $telemetry.Available) {
     $telemetryMarkdown = ConvertTo-CrashDoctorTelemetryMarkdownSection -Telemetry $telemetry
     if (-not [string]::IsNullOrWhiteSpace($telemetryMarkdown)) { $markdown += [Environment]::NewLine + [Environment]::NewLine + $telemetryMarkdown }
+}
+if ($crashes.Count -gt 0) {
+    $crashMarkdown = ConvertTo-CrashDoctorCrashHistoryMarkdown -Crashes $crashes
+    if (-not [string]::IsNullOrWhiteSpace($crashMarkdown)) { $markdown += [Environment]::NewLine + [Environment]::NewLine + $crashMarkdown }
 }
 
 $markdownPath = Join-Path $OutputDirectory 'crash-doctor-report.md'

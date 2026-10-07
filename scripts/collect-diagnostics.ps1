@@ -5,7 +5,8 @@
 param(
     [string]$OutputRoot = ([Environment]::GetFolderPath('Desktop')),
     [int]$EventHours = 6,
-    [string]$SensorCsvPath
+    [string]$SensorCsvPath,
+    [string]$SensorJsonlPath
 )
 
 $ErrorActionPreference = 'Continue'
@@ -117,7 +118,18 @@ $powerReport = Join-Path -Path $out -ChildPath 'systempower-report.html'
 $msinfoReport = Join-Path -Path $out -ChildPath 'msinfo32.nfo'
 powercfg /batteryreport /output $batteryReport | Out-Null
 powercfg /systempowerreport /output $powerReport | Out-Null
-Start-Process -FilePath 'msinfo32.exe' -ArgumentList @('/nfo', $msinfoReport) -Wait -NoNewWindow
+try {
+    $msinfoProc = Start-Process -FilePath 'msinfo32.exe' -ArgumentList @('/nfo', $msinfoReport) -PassThru -NoNewWindow -ErrorAction SilentlyContinue
+    if ($msinfoProc) {
+        if (-not $msinfoProc.WaitForExit(15000)) {
+            Write-Warning "msinfo32 export timed out after 15 seconds; continuing without .nfo export."
+            try { Stop-Process -Id $msinfoProc.Id -Force -ErrorAction SilentlyContinue } catch {}
+        }
+    }
+}
+catch {
+    Write-Warning "msinfo32 export could not be started: $($_.Exception.Message)"
+}
 
 $sensorCsvAttached = $false
 $sensorCsvSourceName = $null
@@ -131,23 +143,60 @@ if (-not [string]::IsNullOrWhiteSpace($SensorCsvPath)) {
         Write-Warning "Sensor CSV was requested but not found: $SensorCsvPath"
     }
 }
+else {
+    $recentCsv = @(Get-ChildItem -LiteralPath $OutputRoot -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(?:sensors?|hwinfo).*\.csv$' -and $_.LastWriteTimeUtc -ge (Get-Date).ToUniversalTime().AddHours(-4) } |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1)
+    if ($recentCsv.Count -gt 0) {
+        Copy-Item -LiteralPath $recentCsv[0].FullName -Destination (Join-Path $out 'sensors.csv') -Force
+        $sensorCsvAttached = $true
+        $sensorCsvSourceName = $recentCsv[0].Name
+        Write-Host "Auto-attached recent sensor CSV: $($recentCsv[0].Name)"
+    }
+}
+
+$sensorJsonlAttached = $false
+$sensorJsonlSourceName = $null
+if (-not [string]::IsNullOrWhiteSpace($SensorJsonlPath)) {
+    if (Test-Path -LiteralPath $SensorJsonlPath -PathType Leaf) {
+        Copy-Item -LiteralPath $SensorJsonlPath -Destination (Join-Path $out 'sensors.jsonl') -Force
+        $sensorJsonlAttached = $true
+        $sensorJsonlSourceName = Split-Path -Leaf $SensorJsonlPath
+    }
+    else {
+        Write-Warning "Sensor JSONL was requested but not found: $SensorJsonlPath"
+    }
+}
+else {
+    $recentJsonl = @(Get-ChildItem -LiteralPath $OutputRoot -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(?:sensor|wcd-sensors).*\.jsonl$' -and $_.LastWriteTimeUtc -ge (Get-Date).ToUniversalTime().AddHours(-4) } |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1)
+    if ($recentJsonl.Count -gt 0) {
+        Copy-Item -LiteralPath $recentJsonl[0].FullName -Destination (Join-Path $out 'sensors.jsonl') -Force
+        $sensorJsonlAttached = $true
+        $sensorJsonlSourceName = $recentJsonl[0].Name
+        Write-Host "Auto-attached recent sensor log: $($recentJsonl[0].Name)"
+    }
+}
 
 $metadataPath = Join-Path -Path $out -ChildPath 'collection-metadata.txt'
 $metadata = [ordered]@{
-    CollectedAtLocal   = (Get-Date).ToString('o')
-    EventHours         = $EventHours
-    ComputerName       = $env:COMPUTERNAME
-    UserName           = $env:USERNAME
-    OutputDirectory    = $out
-    SensorCsvAttached  = $sensorCsvAttached
-    SensorCsvSource    = $sensorCsvSourceName
+    CollectedAtLocal    = (Get-Date).ToString('o')
+    EventHours          = $EventHours
+    ComputerName        = $env:COMPUTERNAME
+    UserName            = $env:USERNAME
+    OutputDirectory     = $out
+    SensorCsvAttached   = $sensorCsvAttached
+    SensorCsvSource     = $sensorCsvSourceName
+    SensorJsonlAttached = $sensorJsonlAttached
+    SensorJsonlSource   = $sensorJsonlSourceName
 }
 $metadata.GetEnumerator() | ForEach-Object {
     '{0}={1}' -f $_.Key, $_.Value
 } | Out-File -FilePath $metadataPath -Encoding utf8
 
 Write-Host "Saved diagnostic snapshot to $out"
-if (-not $sensorCsvAttached) {
-    Write-Host 'Optional: rerun with -SensorCsvPath <HWiNFO CSV> to let Crash Doctor correlate sensor telemetry.'
+if (-not $sensorCsvAttached -and -not $sensorJsonlAttached) {
+    Write-Host 'Optional: rerun with -SensorCsvPath or -SensorJsonlPath to correlate sensor telemetry.'
 }
 Write-Host 'Review the folder for sensitive information before publishing any file from it.'

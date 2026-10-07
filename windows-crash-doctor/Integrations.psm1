@@ -336,7 +336,7 @@ function Get-WcdHardwareSensors {
         $computer.Close()
     }
 
-    return @($results)
+    return $results.ToArray()
 }
 
 function Start-WcdSensorWatch {

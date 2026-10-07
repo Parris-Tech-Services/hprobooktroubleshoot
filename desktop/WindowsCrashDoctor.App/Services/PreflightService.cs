@@ -85,6 +85,8 @@ public sealed class PreflightService
             debugger is null ? "Optional debugger not found; native header parsing remains available." : debugger);
 
         var symbolPath = Environment.GetEnvironmentVariable("_NT_SYMBOL_PATH");
+        if (string.IsNullOrWhiteSpace(symbolPath)) symbolPath = Environment.GetEnvironmentVariable("_NT_SYMBOL_PATH", EnvironmentVariableTarget.User);
+        if (string.IsNullOrWhiteSpace(symbolPath)) symbolPath = Environment.GetEnvironmentVariable("_NT_SYMBOL_PATH", EnvironmentVariableTarget.Machine);
         Add("symbols", "Debugger symbols", string.IsNullOrWhiteSpace(symbolPath) ? "not-configured" : "healthy",
             string.IsNullOrWhiteSpace(symbolPath) ? "No _NT_SYMBOL_PATH configured; only relevant to symbolized dump analysis." : "Symbol path is configured.");
 
@@ -120,6 +122,7 @@ public sealed class PreflightService
         var candidates = new[]
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "HWiNFO64", "HWiNFO64.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WindowsCrashDoctor", "Tools", "librehardwaremonitor", "LibreHardwareMonitorLib.dll"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WindowsCrashDoctor", "providers", "librehardwaremonitor", "LibreHardwareMonitorLib.dll")
         };
         return candidates.FirstOrDefault(File.Exists);

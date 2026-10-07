@@ -1,0 +1,2240 @@
+{
+  "System File Checker (SFC)": {
+    "executables": [
+      "sfc.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Verify protected system files",
+        "command": "sfc.exe /verifyonly",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 1800
+      },
+      {
+        "name": "Repair protected Windows files",
+        "command": "sfc.exe /scannow",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "DISM": {
+    "executables": [
+      "dism.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Check Windows image health",
+        "command": "dism.exe /Online /Cleanup-Image /CheckHealth",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 180
+      },
+      {
+        "name": "Repair Windows image",
+        "command": "dism.exe /Online /Cleanup-Image /RestoreHealth",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      },
+      {
+        "name": "Scan Windows image health",
+        "command": "dism.exe /Online /Cleanup-Image /ScanHealth",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "CHKDSK": {
+    "executables": [
+      "chkdsk.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Read-only system-drive filesystem check",
+        "command": "chkdsk.exe $env:SystemDrive",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 1800
+      },
+      {
+        "name": "Schedule system-drive filesystem repair",
+        "command": "chkdsk.exe $env:SystemDrive /f",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      },
+      {
+        "name": "Schedule system-drive filesystem and sector recovery",
+        "command": "chkdsk.exe $env:SystemDrive /r",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "Startup Repair": {
+    "executables": [
+      "explorer.exe"
+    ],
+    "arguments": [
+      "ms-settings:recovery"
+    ],
+    "actions": []
+  },
+  "Windows Memory Diagnostic": {
+    "executables": [
+      "mdsched.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "System Restore": {
+    "executables": [
+      "rstrui.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "List restore points",
+        "command": "Get-ComputerRestorePoint | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "BCDEdit": {
+    "executables": [
+      "bcdedit.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Inspect boot configuration",
+        "command": "bcdedit.exe /enum",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "BCDBoot": {
+    "executables": [
+      "bcdboot.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "Bootrec": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "ReAgentC": {
+    "executables": [
+      "reagentc.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Inspect Windows Recovery Environment",
+        "command": "reagentc.exe /info",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      },
+      {
+        "name": "Enable Windows Recovery Environment",
+        "command": "reagentc.exe /enable",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "MBR2GPT": {
+    "executables": [
+      "mbr2gpt.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Validate conversion readiness only",
+        "command": "mbr2gpt.exe /validate /allowFullOS",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 90
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "Event Viewer": {
+    "executables": [
+      "mmc.exe"
+    ],
+    "arguments": [
+      "eventvwr.msc"
+    ],
+    "actions": [
+      {
+        "name": "Recent critical/error events",
+        "command": "Get-WinEvent -FilterHashtable @{LogName='System';Level=1,2;StartTime=(Get-Date).AddDays(-2)} -MaxEvents 100 | Select-Object TimeCreated,Id,ProviderName,Message | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Reliability Monitor": {
+    "executables": [
+      "perfmon.exe"
+    ],
+    "arguments": [
+      "/rel"
+    ],
+    "actions": [
+      {
+        "name": "Reliability history",
+        "command": "Get-CimInstance Win32_ReliabilityRecords | Sort-Object TimeGenerated -Descending | Select-Object -First 100 TimeGenerated,SourceName,EventIdentifier,Message | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Resource Monitor": {
+    "executables": [
+      "resmon.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Process resource snapshot",
+        "command": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 30 Name,Id,CPU,WorkingSet64,Handles | Format-Table -AutoSize",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Task Manager": {
+    "executables": [
+      "taskmgr.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Process and startup inventory",
+        "command": "Get-Process | Select-Object Name,Id,CPU,WorkingSet64 | Format-Table -AutoSize; Get-CimInstance Win32_StartupCommand | Select-Object Name,Command,Location | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Device Manager": {
+    "executables": [
+      "mmc.exe"
+    ],
+    "arguments": [
+      "devmgmt.msc"
+    ],
+    "actions": [
+      {
+        "name": "Devices with reported faults",
+        "command": "Get-PnpDevice | Where-Object Status -ne OK | Select-Object Status,Class,FriendlyName,InstanceId | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "System Information (msinfo32)": {
+    "executables": [
+      "msinfo32.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Hardware and operating system inventory",
+        "command": "Get-CimInstance Win32_ComputerSystem | Format-List Manufacturer,Model,TotalPhysicalMemory; Get-CimInstance Win32_BIOS | Format-List Manufacturer,SMBIOSBIOSVersion,ReleaseDate; Get-CimInstance Win32_OperatingSystem | Format-List Caption,Version,BuildNumber",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Disk Management": {
+    "executables": [
+      "mmc.exe"
+    ],
+    "arguments": [
+      "diskmgmt.msc"
+    ],
+    "actions": [
+      {
+        "name": "Disk and volume inventory",
+        "command": "Get-Disk | Format-List Number,FriendlyName,PartitionStyle,OperationalStatus,Size; Get-Volume | Format-Table DriveLetter,FileSystem,HealthStatus,Size,SizeRemaining",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "DirectX Diagnostic Tool (dxdiag)": {
+    "executables": [
+      "dxdiag.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Export DirectX diagnostic report",
+        "command": "Start-Process dxdiag.exe -ArgumentList @('/t',(Join-Path (Get-Location) 'dxdiag.txt')) -Wait -NoNewWindow; Get-Content -LiteralPath 'dxdiag.txt'",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 90
+      }
+    ]
+  },
+  "Performance Monitor": {
+    "executables": [
+      "perfmon.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Get Help / Settings Troubleshooters": {
+    "executables": [
+      "explorer.exe"
+    ],
+    "arguments": [
+      "ms-settings:troubleshoot"
+    ],
+    "actions": []
+  },
+  "Storage Sense": {
+    "executables": [
+      "explorer.exe"
+    ],
+    "arguments": [
+      "ms-settings:storagesense"
+    ],
+    "actions": []
+  },
+  "Disk Cleanup": {
+    "executables": [
+      "cleanmgr.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Defragment and Optimize Drives": {
+    "executables": [
+      "dfrgui.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Microsoft PC Manager": {
+    "executables": [
+      "PCManager\\MSPCManager.exe",
+      "MSPCManager.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "CCleaner": {
+    "executables": [
+      "CCleaner\\CCleaner64.exe",
+      "CCleaner64.exe",
+      "CCleaner.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "BleachBit": {
+    "executables": [
+      "BleachBit\\bleachbit.exe",
+      "bleachbit.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "WizTree": {
+    "executables": [
+      "WizTree\\WizTree64.exe",
+      "WizTree64.exe",
+      "WizTree.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "WinDirStat": {
+    "executables": [
+      "WinDirStat\\windirstat.exe",
+      "windirstat.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Windows Performance Toolkit (WPT)": {
+    "executables": [
+      "Windows Kits\\10\\Windows Performance Toolkit\\wpa.exe",
+      "wpa.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Windows Performance Analyzer (WPA)": {
+    "executables": [
+      "Windows Kits\\10\\Windows Performance Toolkit\\wpa.exe",
+      "wpa.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "GPUView": {
+    "executables": [
+      "Windows Kits\\10\\Windows Performance Toolkit\\gpuview.exe",
+      "gpuview.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Microsoft PIX": {
+    "executables": [
+      "WinPixGui.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Windows Performance Recorder (WPR)": {
+    "executables": [
+      "wprui.exe",
+      "Windows Kits\\10\\Windows Performance Toolkit\\wprui.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Windows Assessment Toolkit": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "LatencyMon": {
+    "executables": [
+      "LatencyMon\\LatMon.exe",
+      "LatMon.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "CPU-Z": {
+    "executables": [
+      "CPUID\\CPU-Z\\cpuz.exe",
+      "cpuz.exe",
+      "cpuz_x64.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "GPU-Z": {
+    "executables": [
+      "GPU-Z.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "HWMonitor": {
+    "executables": [
+      "CPUID\\HWMonitor\\HWMonitor.exe",
+      "HWMonitor.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "LibreHardwareMonitor": {
+    "executables": [
+      "librehardwaremonitor\\LibreHardwareMonitor.exe",
+      "LibreHardwareMonitor.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Capture current hardware sensors",
+        "command": "Import-Module (Join-Path $env:LOCALAPPDATA 'WindowsCrashDoctor\\engine\\0.3.0\\windows-crash-doctor\\Integrations.psm1') -Force; Get-WcdHardwareSensors | ConvertTo-Json -Depth 6",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 60
+      }
+    ],
+    "providerId": "librehardwaremonitor"
+  },
+  "HWiNFO64": {
+    "executables": [
+      "HWiNFO64\\HWiNFO64.exe",
+      "HWiNFO64.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Core Temp": {
+    "executables": [
+      "Core Temp\\Core Temp.exe",
+      "Core Temp.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "MSI Afterburner": {
+    "executables": [
+      "MSI Afterburner\\MSIAfterburner.exe",
+      "MSIAfterburner.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "BatteryInfoView": {
+    "executables": [
+      "BatteryInfoView.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "powercfg /batteryreport": {
+    "executables": [
+      "powercfg.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Export battery report",
+        "command": "powercfg.exe /batteryreport /output (Join-Path (Get-Location) 'battery-report.html')",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "MemTest86": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Memtest86+": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "OCCT": {
+    "executables": [
+      "OCCT.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Prime95": {
+    "executables": [
+      "prime95.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "FurMark": {
+    "executables": [
+      "Geeks3D\\FurMark\\FurMark.exe",
+      "FurMark.exe",
+      "FurMark_GUI.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Cinebench": {
+    "executables": [
+      "Cinebench.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "CrystalDiskMark": {
+    "executables": [
+      "CrystalDiskMark\\DiskMark64.exe",
+      "DiskMark64.exe",
+      "DiskMark.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "CrystalMark 3D25": {
+    "executables": [
+      "CrystalMark3D25\\CrystalMark3D25.exe",
+      "CrystalMark3D25.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Dell SupportAssist / ePSA": {
+    "executables": [
+      "Dell\\SupportAssistAgent\\bin\\SupportAssist.exe",
+      "SupportAssist.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "HP PC Hardware Diagnostics UEFI": {
+    "executables": [
+      "HP\\HP PC Hardware Diagnostics Windows\\HPDiags.exe",
+      "HPDiags.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Lenovo Diagnostics": {
+    "executables": [
+      "Lenovo\\Lenovo Diagnostics\\LenovoDiagnostics.exe",
+      "LenovoDiagnostics.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "PassMark MonitorTest": {
+    "executables": [
+      "MonitorTest.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Keyboard / touchpad testers": {
+    "executables": [
+      "KeyboardTest.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "CrystalDiskInfo": {
+    "executables": [
+      "CrystalDiskInfo\\DiskInfo64.exe",
+      "DiskInfo64.exe",
+      "DiskInfo.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "smartmontools": {
+    "executables": [
+      "smartmontools\\bin\\smartctl.exe",
+      "smartctl.exe"
+    ],
+    "arguments": [
+      "--help"
+    ],
+    "actions": [
+      {
+        "name": "List SMART-capable devices",
+        "command": "smartctl.exe --scan-open",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 60
+      }
+    ],
+    "providerId": "smartmontools"
+  },
+  "GSmartControl": {
+    "executables": [
+      "gsmartcontrol\\gsmartcontrol.exe",
+      "gsmartcontrol.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "HDDScan": {
+    "executables": [
+      "HDDScan.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Vendor SSD utilities": {
+    "executables": [
+      "Samsung\\Samsung Magician\\SamsungMagician.exe",
+      "SamsungMagician.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "DiskPart": {
+    "executables": [
+      "diskpart.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "Get-PhysicalDisk": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Physical disk health",
+        "command": "Get-PhysicalDisk | Format-List FriendlyName,SerialNumber,MediaType,HealthStatus,OperationalStatus,Size",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Get-StorageReliabilityCounter": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Storage reliability counters",
+        "command": "Get-PhysicalDisk | Get-StorageReliabilityCounter | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "Get-Disk / Get-Volume / Get-Partition": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Storage topology",
+        "command": "Get-Disk | Format-List; Get-Partition | Format-Table; Get-Volume | Format-Table",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "mountvol": {
+    "executables": [
+      "mountvol.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Volume mount points",
+        "command": "mountvol.exe",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "fsutil": {
+    "executables": [
+      "fsutil.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Query filesystem dirty bit and TRIM",
+        "command": "fsutil.exe dirty query $env:SystemDrive; fsutil.exe behavior query DisableDeleteNotify",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "compact": {
+    "executables": [
+      "compact.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Query CompactOS state",
+        "command": "compact.exe /CompactOS:query",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "DBAN": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "ShredOS / nwipe": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Manufacturer secure erase / NVMe sanitise": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Parted Magic": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Blancco": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "SDelete": {
+    "executables": [
+      "sdelete64.exe",
+      "sdelete.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "Windows PE / WinPE": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Rufus": {
+    "executables": [
+      "rufus.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Ventoy": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Hiren's BootCD PE": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Medicat USB": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Macrium Reflect": {
+    "executables": [
+      "Macrium\\Reflect\\Reflect.exe",
+      "Reflect.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Clonezilla": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Rescuezilla": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Disk2vhd": {
+    "executables": [
+      "disk2vhd64.exe",
+      "disk2vhd.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Robocopy": {
+    "executables": [
+      "robocopy.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "certutil -hashfile": {
+    "executables": [
+      "certutil.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "TestDisk": {
+    "executables": [
+      "testdisk_win.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "PhotoRec": {
+    "executables": [
+      "qphotorec_win.exe",
+      "photorec_win.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Recuva": {
+    "executables": [
+      "Recuva\\recuva64.exe",
+      "recuva64.exe",
+      "recuva.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "DMDE": {
+    "executables": [
+      "dmde.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "GNU ddrescue": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Sysinternals Suite": {
+    "executables": [
+      "SysinternalsSuite\\procexp64.exe",
+      "procexp64.exe",
+      "procexp.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Process Explorer": {
+    "executables": [
+      "procexp64.exe",
+      "procexp.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Autoruns": {
+    "executables": [
+      "Autoruns64.exe",
+      "Autoruns.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Process Monitor (Procmon)": {
+    "executables": [
+      "Procmon64.exe",
+      "Procmon.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "PsTools": {
+    "executables": [
+      "PsInfo64.exe",
+      "PsInfo.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "ProcDump": {
+    "executables": [
+      "procdump64.exe",
+      "procdump.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "TCPView": {
+    "executables": [
+      "tcpview64.exe",
+      "tcpview.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "RAMMap": {
+    "executables": [
+      "RAMMap64.exe",
+      "RAMMap.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Sigcheck": {
+    "executables": [
+      "sigcheck64.exe",
+      "sigcheck.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "BgInfo": {
+    "executables": [
+      "Bginfo64.exe",
+      "Bginfo.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Sysmon": {
+    "executables": [
+      "Sysmon64.exe",
+      "Sysmon.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "VMMap": {
+    "executables": [
+      "VMMap64.exe",
+      "VMMap.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Coreinfo": {
+    "executables": [
+      "Coreinfo64.exe",
+      "Coreinfo.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "Handle": {
+    "executables": [
+      "handle64.exe",
+      "handle.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "ListDLLs": {
+    "executables": [
+      "listdlls64.exe",
+      "listdlls.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "LiveKd": {
+    "executables": [
+      "livekd64.exe",
+      "livekd.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "DebugView": {
+    "executables": [
+      "Dbgview64.exe",
+      "Dbgview.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "PsInfo": {
+    "executables": [
+      "PsInfo64.exe",
+      "PsInfo.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "PsPing": {
+    "executables": [
+      "psping64.exe",
+      "psping.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "DU": {
+    "executables": [
+      "du64.exe",
+      "du.exe"
+    ],
+    "arguments": [
+      "-?"
+    ],
+    "actions": []
+  },
+  "WinDbg / cdb": {
+    "executables": [
+      "WinDbgX.exe",
+      "Windows Kits\\10\\Debuggers\\x64\\cdb.exe",
+      "cdb.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Inspect debugger symbols",
+        "command": "[pscustomobject]@{ProcessSymbolPath=$env:_NT_SYMBOL_PATH;UserSymbolPath=[Environment]::GetEnvironmentVariable('_NT_SYMBOL_PATH','User')} | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      },
+      {
+        "name": "Configure Microsoft symbol server",
+        "command": "$cache=Join-Path $env:LOCALAPPDATA 'WindowsCrashDoctor\\symbols'; New-Item -ItemType Directory -Path $cache -Force | Out-Null; $value='srv*'+$cache+'*https://msdl.microsoft.com/download/symbols'; [Environment]::SetEnvironmentVariable('_NT_SYMBOL_PATH',$value,'User'); Write-Output $value",
+        "changesSystem": true,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "BlueScreenView": {
+    "executables": [
+      "BlueScreenView.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "WhoCrashed": {
+    "executables": [
+      "WhoCrashed\\whocrashed.exe",
+      "whocrashed.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Driver Verifier": {
+    "executables": [
+      "verifier.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Inspect active verifier settings",
+        "command": "verifier.exe /querysettings",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "PnPUtil": {
+    "executables": [
+      "pnputil.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Enumerate driver-store packages",
+        "command": "pnputil.exe /enum-drivers",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "Get-PnpDevice": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Device status inventory",
+        "command": "Get-PnpDevice | Select-Object Status,Class,FriendlyName,InstanceId | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "DriverStore Explorer": {
+    "executables": [
+      "Rapr.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Double Driver": {
+    "executables": [
+      "dd.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Snappy Driver Installer Origin": {
+    "executables": [
+      "SDIO_x64.exe",
+      "SDIO.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Windows ADK": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Get-WindowsAutopilotInfo": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Inspect Autopilot script availability",
+        "command": "Get-InstalledScript -Name Get-WindowsAutopilotInfo -ErrorAction Stop | Select-Object Name,Version,InstalledLocation | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "PSWindowsUpdate": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Installed update module version",
+        "command": "Get-Module -ListAvailable PSWindowsUpdate | Select-Object Name,Version,Path | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Get-WinEvent filtering": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Recent application errors",
+        "command": "Get-WinEvent -FilterHashtable @{LogName='Application';Level=1,2;StartTime=(Get-Date).AddDays(-2)} -MaxEvents 100 | Format-List TimeCreated,Id,ProviderName,Message",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Get-CimInstance / Get-WmiObject": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "CIM hardware inventory",
+        "command": "Get-CimInstance Win32_Processor | Format-List Name,NumberOfCores,NumberOfLogicalProcessors; Get-CimInstance Win32_PhysicalMemory | Format-Table Manufacturer,Capacity,Speed,PartNumber",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Wireshark": {
+    "executables": [
+      "Wireshark\\Wireshark.exe",
+      "Wireshark.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Nmap / Zenmap": {
+    "executables": [
+      "Nmap\\zenmap.exe",
+      "zenmap.exe",
+      "nmap.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Advanced IP Scanner": {
+    "executables": [
+      "Advanced IP Scanner\\advanced_ip_scanner.exe",
+      "advanced_ip_scanner.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Angry IP Scanner": {
+    "executables": [
+      "Angry IP Scanner\\ipscan.exe",
+      "ipscan.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "PingPlotter": {
+    "executables": [
+      "PingPlotter.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "WinMTR": {
+    "executables": [
+      "WinMTR.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "iperf3": {
+    "executables": [
+      "iperf3.exe"
+    ],
+    "arguments": [
+      "--help"
+    ],
+    "actions": []
+  },
+  "Fing": {
+    "executables": [
+      "Fing.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "NetSpot": {
+    "executables": [
+      "NetSpot.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "inSSIDer / Wi-Fi Analyzer alternatives": {
+    "executables": [
+      "inSSIDer.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Netsh": {
+    "executables": [
+      "netsh.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Network configuration snapshot",
+        "command": "netsh.exe interface ipv4 show config",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "pathping": {
+    "executables": [
+      "pathping.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Trace route and loss to Microsoft",
+        "command": "pathping.exe -q 10 -p 100 www.microsoft.com",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 120
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "nslookup / Resolve-DnsName": {
+    "executables": [
+      "nslookup.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "DNS resolver configuration",
+        "command": "Get-DnsClientServerAddress | Format-List; Resolve-DnsName microsoft.com | Format-Table",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "PktMon": {
+    "executables": [
+      "pktmon.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Packet-monitor status",
+        "command": "pktmon.exe status",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "netsh trace": {
+    "executables": [
+      "netsh.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Network trace status",
+        "command": "netsh.exe trace show status",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "Test-NetConnection": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Microsoft HTTPS connectivity",
+        "command": "Test-NetConnection www.microsoft.com -Port 443 -InformationLevel Detailed | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "Get-NetAdapter": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "NIC state and driver inventory",
+        "command": "Get-NetAdapter | Format-List Name,InterfaceDescription,Status,LinkSpeed,DriverInformation",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Get-NetTCPConnection": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "TCP endpoints and process IDs",
+        "command": "Get-NetTCPConnection | Select-Object State,LocalAddress,LocalPort,RemoteAddress,RemotePort,OwningProcess | Format-Table -AutoSize",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "route print / arp -a / netstat -ano": {
+    "executables": [
+      "netstat.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Routing and socket snapshot",
+        "command": "route.exe print; arp.exe -a; netstat.exe -ano",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "ipconfig /all, /flushdns, /registerdns": {
+    "executables": [
+      "ipconfig.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "IP configuration",
+        "command": "ipconfig.exe /all",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      },
+      {
+        "name": "Flush DNS cache",
+        "command": "ipconfig.exe /flushdns",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      },
+      {
+        "name": "Register DNS records",
+        "command": "ipconfig.exe /registerdns",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "PuTTY": {
+    "executables": [
+      "PuTTY\\putty.exe",
+      "putty.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Tera Term": {
+    "executables": [
+      "teraterm\\ttermpro.exe",
+      "ttermpro.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "MobaXterm": {
+    "executables": [
+      "MobaXterm\\MobaXterm.exe",
+      "MobaXterm.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "MeshCentral": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "RustDesk": {
+    "executables": [
+      "RustDesk\\rustdesk.exe",
+      "rustdesk.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "AnyDesk": {
+    "executables": [
+      "AnyDesk\\AnyDesk.exe",
+      "AnyDesk.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Quick Assist": {
+    "executables": [
+      "quickassist.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Action1": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Lansweeper": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Snipe-IT": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "GLPI": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Zabbix": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Netdata": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "PRTG": {
+    "executables": [
+      "PRTG Network Monitor\\PRTG Enterprise Console.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "RSAT": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "RSAT feature availability",
+        "command": "Get-WindowsCapability -Online | Where-Object Name -like 'RSAT*' | Format-Table Name,State",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "gpresult /h / Group Policy tools": {
+    "executables": [
+      "gpresult.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Applied policy summary",
+        "command": "gpresult.exe /r",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 60
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "Resultant Set of Policy (rsop)": {
+    "executables": [
+      "mmc.exe"
+    ],
+    "arguments": [
+      "rsop.msc"
+    ],
+    "actions": []
+  },
+  "BloodHound CE": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "PingCastle": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Purple Knight": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Microsoft Security Compliance Toolkit": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "Microsoft Secure Score": {
+    "executables": [],
+    "arguments": [],
+    "actions": []
+  },
+  "whoami /all": {
+    "executables": [
+      "whoami.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Token, groups and privileges",
+        "command": "whoami.exe /all",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "dsregcmd /status": {
+    "executables": [
+      "dsregcmd.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Entra device registration state",
+        "command": "dsregcmd.exe /status",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "MDMDiagnosticTool": {
+    "executables": [
+      "mdmdiagnosticstool.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Collect local MDM diagnostic bundle",
+        "command": "mdmdiagnosticstool.exe -area 'DeviceEnrollment;DeviceProvisioning;Autopilot' -zip (Join-Path (Get-Location) 'mdm-diagnostics.zip')",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 180
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "manage-bde / Get-BitLockerVolume": {
+    "executables": [
+      "manage-bde.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "BitLocker state without recovery secrets",
+        "command": "Get-BitLockerVolume | Select-Object MountPoint,VolumeType,VolumeStatus,ProtectionStatus,EncryptionPercentage,EncryptionMethod | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ],
+    "consoleHint": "Command-line tool: use the diagnostic action below, or launch help before selecting an advanced operation."
+  },
+  "Get-Tpm / tpm.msc": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "TPM readiness",
+        "command": "Get-Tpm | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Confirm-SecureBootUEFI": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Secure Boot status",
+        "command": "Confirm-SecureBootUEFI",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Malwarebytes": {
+    "executables": [
+      "Malwarebytes\\Anti-Malware\\mbam.exe",
+      "mbam.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "AdwCleaner": {
+    "executables": [
+      "adwcleaner.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Kaspersky Virus Removal Tool": {
+    "executables": [
+      "KVRT.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "ESET Online Scanner": {
+    "executables": [
+      "esetonlinescanner.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Windows Defender Offline scan": {
+    "executables": [],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Restart into Defender Offline scan",
+        "command": "Start-MpWDOScan",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      }
+    ]
+  },
+  "TDSSKiller": {
+    "executables": [
+      "TDSSKiller.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "RKill": {
+    "executables": [
+      "rkill.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "HitmanPro": {
+    "executables": [
+      "HitmanPro.exe",
+      "HitmanPro_x64.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Microsoft Safety Scanner (MSERT)": {
+    "executables": [
+      "msert.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Get-MpComputerStatus / Start-MpScan": {
+    "executables": [
+      "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    ],
+    "arguments": [
+      "-NoProfile",
+      "-NoExit"
+    ],
+    "actions": [
+      {
+        "name": "Defender health",
+        "command": "Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,AntivirusSignatureLastUpdated,QuickScanAge,FullScanAge | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      },
+      {
+        "name": "Run Defender quick scan",
+        "command": "Start-MpScan -ScanType QuickScan",
+        "changesSystem": true,
+        "requiresAdmin": true,
+        "timeoutSeconds": 3600
+      }
+    ]
+  },
+  "Windows Sandbox": {
+    "executables": [
+      "WindowsSandbox.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Sandbox feature availability",
+        "command": "Get-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM | Format-List FeatureName,State",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Windows Firewall Advanced Security": {
+    "executables": [
+      "mmc.exe"
+    ],
+    "arguments": [
+      "wf.msc"
+    ],
+    "actions": [
+      {
+        "name": "Firewall profile status",
+        "command": "Get-NetFirewallProfile | Select-Object Name,Enabled,DefaultInboundAction,DefaultOutboundAction | Format-List",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Registry Editor / reg.exe": {
+    "executables": [
+      "regedit.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Services / sc.exe": {
+    "executables": [
+      "mmc.exe"
+    ],
+    "arguments": [
+      "services.msc"
+    ],
+    "actions": [
+      {
+        "name": "Service state inventory",
+        "command": "Get-Service | Select-Object Name,DisplayName,Status,StartType | Format-Table -AutoSize",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "Task Scheduler / schtasks": {
+    "executables": [
+      "mmc.exe"
+    ],
+    "arguments": [
+      "taskschd.msc"
+    ],
+    "actions": [
+      {
+        "name": "Scheduled task inventory",
+        "command": "Get-ScheduledTask | Select-Object TaskPath,TaskName,State | Format-Table -AutoSize",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "System Configuration (msconfig)": {
+    "executables": [
+      "msconfig.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "powercfg /energy": {
+    "executables": [
+      "powercfg.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Capture 15-second energy report",
+        "command": "powercfg.exe /energy /duration 15 /output (Join-Path (Get-Location) 'energy-report.html')",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "powercfg /sleepstudy": {
+    "executables": [
+      "powercfg.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Export sleep study",
+        "command": "powercfg.exe /sleepstudy /output (Join-Path (Get-Location) 'sleep-study.html')",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "powercfg /requests": {
+    "executables": [
+      "powercfg.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Sleep blockers",
+        "command": "powercfg.exe /requests",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "powercfg /lastwake": {
+    "executables": [
+      "powercfg.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Last wake source",
+        "command": "powercfg.exe /lastwake",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 45
+      }
+    ]
+  },
+  "powercfg /systempowerreport": {
+    "executables": [
+      "powercfg.exe"
+    ],
+    "arguments": [
+      "/?"
+    ],
+    "actions": [
+      {
+        "name": "Export power-transition report",
+        "command": "powercfg.exe /systempowerreport /output (Join-Path (Get-Location) 'system-power-report.html')",
+        "changesSystem": false,
+        "requiresAdmin": true,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "Revo Uninstaller": {
+    "executables": [
+      "VS Revo Group\\Revo Uninstaller\\Revouninstaller.exe",
+      "Revouninstaller.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Geek Uninstaller": {
+    "executables": [
+      "geek.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "O&O ShutUp10++": {
+    "executables": [
+      "OOSU10.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "WinGet": {
+    "executables": [
+      "winget.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Installed package inventory",
+        "command": "winget.exe list --disable-interactivity",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 90
+      }
+    ]
+  },
+  "Chocolatey": {
+    "executables": [
+      "%ChocolateyInstall%\\bin\\choco.exe",
+      "choco.exe"
+    ],
+    "arguments": [],
+    "actions": [
+      {
+        "name": "Installed package inventory",
+        "command": "choco.exe list --limit-output",
+        "changesSystem": false,
+        "requiresAdmin": false,
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "Ninite": {
+    "executables": [
+      "Ninite.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "Everything": {
+    "executables": [
+      "Everything\\Everything.exe",
+      "Everything.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "NirLauncher": {
+    "executables": [
+      "NirLauncher.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "USBDeview": {
+    "executables": [
+      "USBDeview.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "DriverView": {
+    "executables": [
+      "DriverView.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "CurrPorts": {
+    "executables": [
+      "cports.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "ShellExView": {
+    "executables": [
+      "shexview.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  },
+  "AppCrashView": {
+    "executables": [
+      "AppCrashView.exe"
+    ],
+    "arguments": [],
+    "actions": []
+  }
+}

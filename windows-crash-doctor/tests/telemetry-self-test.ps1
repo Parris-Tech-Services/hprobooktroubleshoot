@@ -105,6 +105,28 @@ not-json-and-must-be-skipped
     Assert-True (-not ($lhmIds -contains 'sensor-whea-counter-clean')) 'LibreHardwareMonitor path invented WHEA negative evidence.'
     Assert-True (-not ($lhmIds -contains 'sensor-drive-health-reassuring')) 'LibreHardwareMonitor path invented drive-health negative evidence.'
 
+    # LHM JSONL fixture with available memory and drive endurance sensors.
+    $lhmFullTemp = Join-Path $temp 'lhm-full'
+    New-Item -ItemType Directory -Path $lhmFullTemp -Force | Out-Null
+    @'
+{"Sample":1,"CapturedAt":"2026-09-12T15:16:14+10:00","HardwareType":"Memory","HardwareName":"Memory","SensorType":"Load","SensorName":"Memory","Value":85}
+{"Sample":1,"CapturedAt":"2026-09-12T15:16:14+10:00","HardwareType":"Memory","HardwareName":"Memory","SensorType":"Data","SensorName":"Memory Available","Value":1.2}
+{"Sample":1,"CapturedAt":"2026-09-12T15:16:14+10:00","HardwareType":"Cpu","HardwareName":"Intel CPU","SensorType":"Load","SensorName":"CPU Total","Value":40}
+{"Sample":1,"CapturedAt":"2026-09-12T15:16:14+10:00","HardwareType":"Cpu","HardwareName":"Intel CPU","SensorType":"Temperature","SensorName":"CPU Package","Value":45}
+{"Sample":1,"CapturedAt":"2026-09-12T15:16:14+10:00","HardwareType":"Storage","HardwareName":"NVMe SSD","SensorType":"Level","SensorName":"Remaining Life","Value":98}
+{"Sample":2,"CapturedAt":"2026-09-12T15:16:16+10:00","HardwareType":"Memory","HardwareName":"Memory","SensorType":"Load","SensorName":"Memory","Value":86}
+{"Sample":2,"CapturedAt":"2026-09-12T15:16:16+10:00","HardwareType":"Memory","HardwareName":"Memory","SensorType":"Data","SensorName":"Memory Available","Value":1.1}
+{"Sample":2,"CapturedAt":"2026-09-12T15:16:16+10:00","HardwareType":"Cpu","HardwareName":"Intel CPU","SensorType":"Load","SensorName":"CPU Total","Value":42}
+{"Sample":2,"CapturedAt":"2026-09-12T15:16:16+10:00","HardwareType":"Cpu","HardwareName":"Intel CPU","SensorType":"Temperature","SensorName":"CPU Package","Value":46}
+{"Sample":2,"CapturedAt":"2026-09-12T15:16:16+10:00","HardwareType":"Storage","HardwareName":"NVMe SSD","SensorType":"Level","SensorName":"Remaining Life","Value":98}
+'@ | Set-Content -LiteralPath (Join-Path $lhmFullTemp 'sensors.jsonl') -Encoding utf8
+    $lhmFull = Invoke-CrashDoctorTelemetryAnalysis -EvidencePath $lhmFullTemp
+    Assert-True $lhmFull.Available 'Full LHM telemetry reported unavailable.'
+    Assert-True ($null -ne $lhmFull.Sensor.Summary.PhysicalMemoryAvailableMinMB) 'PhysicalMemoryAvailableMinMB was not parsed.'
+    Assert-True ($lhmFull.Sensor.Summary.DriveRemainingLifeMinPct -eq 98) 'DriveRemainingLifeMinPct was not parsed.'
+    $lhmFullIds = @($lhmFull.Findings | ForEach-Object { $_.Id })
+    Assert-True ($lhmFullIds -contains 'sensor-drive-health-reassuring') 'sensor-drive-health-reassuring did not fire when drive health is present.'
+
     # Windows PowerShell 5.1 unwraps function output aggressively. These fixtures deliberately
     # omit thermal/GPU-limit columns so zero-match helper output is exercised under StrictMode.
     $cardinalityRoot = Join-Path $temp 'cardinality'

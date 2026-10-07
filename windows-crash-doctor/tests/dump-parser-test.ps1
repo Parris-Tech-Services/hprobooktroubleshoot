@@ -200,6 +200,38 @@ try {
     try { Get-CrashDoctorDumpInfo -Path $truncatedPath | Out-Null } catch { $truncatedRejected = $true }
     Assert-True $truncatedRejected 'truncated minidump must be rejected'
 
+    # Bugcheck name resolver tests.
+    Assert-Equal (Get-CrashDoctorBugCheckName -Code 0x9F) 'DRIVER_POWER_STATE_FAILURE' 'Bugcheck 0x9F name lookup'
+    Assert-Equal (Get-CrashDoctorBugCheckName -Code 0x133) 'DPC_WATCHDOG_VIOLATION' 'Bugcheck 0x133 name lookup'
+    Assert-Equal (Get-CrashDoctorBugCheckName -Code 0x3B) 'SYSTEM_SERVICE_EXCEPTION' 'Bugcheck 0x3B name lookup'
+    Assert-Equal (Get-CrashDoctorBugCheckName -Code 0xDEADBEEF) '0xDEADBEEF' 'Unknown bugcheck preserves hex format'
+
+    # Crash history discovery test across the synthetic dumps created in $temp.
+    $history = Get-CrashDoctorSystemCrashHistory -SearchPaths @($temp)
+    Assert-True ($history.Count -ge 4) 'Crash history should discover all dumps including truncated'
+    $validHistory = @($history | Where-Object { $_.Valid })
+    Assert-True ($validHistory.Count -eq 3) 'Exactly 3 synthetic dumps should be marked valid'
+    $invalidHistory = @($history | Where-Object { -not $_.Valid })
+    Assert-True ($invalidHistory.Count -ge 1) 'Corrupted/truncated dump must be recorded as invalid'
+    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'BugCheckName') 'Crash history objects must contain BugCheckName'
+    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'CrashTimeLocal') 'Crash history objects must contain CrashTimeLocal'
+
+    # Faulting module mapping test.
+    $mockInfo = [pscustomobject]@{
+        Exception = [pscustomobject]@{ ExceptionAddress = [uint64]0x00007ff600001000 }
+        Modules   = @(
+            [pscustomobject]@{ Name = 'test.dll'; BaseOfImage = [uint64]0x00007ff600000000; SizeOfImage = [uint32]0x12000 }
+        )
+    }
+    $faultingMod = Find-CrashDoctorFaultingModule -DumpInfo $mockInfo
+    Assert-Equal $faultingMod 'test.dll' 'Find-CrashDoctorFaultingModule should map exception address to module'
+
+    # Markdown generation test.
+    $historyMd = ConvertTo-CrashDoctorCrashHistoryMarkdown -Crashes $history
+    Assert-True ($historyMd -match '# Windows Doctor historical crash summary') 'Markdown header present'
+    Assert-True ($historyMd -match '## Crash index') 'Crash index table present'
+    Assert-True ($historyMd -match '## Detailed crash records') 'Detailed crash records present'
+
     Write-Host 'Windows Crash Doctor dump parser test: PASS'
 }
 finally {

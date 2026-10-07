@@ -85,6 +85,8 @@ public static class DesktopSelfTest
                     throw new InvalidOperationException("Packaged engine report is missing canonical diagnostic-registry provenance.");
                 if (report.RootElement.GetProperty("Coverage").GetProperty("ExpectedCount").GetInt32() != registry.Diagnostics.Count)
                     throw new InvalidOperationException("Report coverage is not sourced from the canonical diagnostic registry.");
+                if (!report.RootElement.TryGetProperty("CrashHistory", out var crashHistory) || crashHistory.ValueKind != JsonValueKind.Array)
+                    throw new InvalidOperationException("Packaged engine report is missing CrashHistory array.");
             }
 
             Stage("network-doctor-selftest");
@@ -120,6 +122,8 @@ public static class DesktopSelfTest
             RunComparisonSelfTest();
             Stage("privacy-export");
             RunPrivacyExportSelfTest(temp);
+            Stage("toolkit-integration");
+            ToolkitSelfTest.Run(temp);
             Stage("complete");
             return 0;
         }

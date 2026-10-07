@@ -35,7 +35,7 @@ Inspiration: Microsoft's full Windows debugger: native/user/kernel dump analysis
 
 Inspiration: A user-friendly crash-dump analyser that turns dump internals into likely problem families and next-step guidance.
 
-- [ ] **WCD-011 [P0]** Add one-command discovery and analysis of all crash dumps on the machine.
+- [x] **WCD-011 [P0]** Add one-command discovery and analysis of all crash dumps on the machine.
 - [ ] **WCD-012 [P0]** Add remote crash-dump analysis for another Windows computer over an explicitly configured administrative path.
 - [ ] **WCD-013 [P2]** Allow analysis of any user-selected dump directory, not only Crash Doctor collection folders.
 - [ ] **WCD-014 [P1]** Generate uptime and time-since-boot context for every crash record.
@@ -50,8 +50,8 @@ Inspiration: A user-friendly crash-dump analyser that turns dump internals into 
 
 Inspiration: A lightweight historical BSOD/minidump browser focused on bugchecks, loaded drivers and stack-involved modules.
 
-- [ ] **WCD-021 [P0]** Add a historical crash table that indexes every discovered minidump chronologically.
-- [ ] **WCD-022 [P0]** Show bugcheck name, code and all four bugcheck parameters in a compact crash card.
+- [x] **WCD-021 [P0]** Add a historical crash table that indexes every discovered minidump chronologically.
+- [x] **WCD-022 [P0]** Show bugcheck name, code and all four bugcheck parameters in a compact crash card.
 - [ ] **WCD-023 [P0]** Enumerate addresses in each crash stack and map them back to candidate drivers/modules.
 - [ ] **WCD-024 [P1]** Extract driver version-resource metadata such as product, company, description and file version.
 - [ ] **WCD-025 [P1]** Show the complete loaded-driver list for each selected crash.
