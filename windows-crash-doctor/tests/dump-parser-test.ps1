@@ -296,7 +296,7 @@ try {
     Assert-Equal $bcaAv.Parameters.Count 2 'AV has 2 parameters'
     Assert-Equal $bcaAv.Parameters[0].Name 'Access Type' 'AV P1 is Access Type'
 
-    # WCD-004 & WCD-005: Call stack unwinding and per-thread call stacks
+    # Heuristic fallback regression: raw stack address candidates are NOT true call-stack unwinding
     $fakeDumpPath = Join-Path $temp 'callstack-test.bin'
     $fakeDumpBytes = New-Object byte[] 512
 
@@ -327,8 +327,8 @@ try {
             [pscustomobject]@{ Name = 'myfilter.sys'; BaseOfImage = [uint64]0x00007FF810000000; SizeOfImage = [uint32]0x20000 }
         )
 
-        $unwoundFrames = @(Read-CrashDoctorCallStack -Stream $csStream -Thread $testThread -Modules $testModules)
-        Assert-True ($unwoundFrames.Count -ge 3) 'Should unwind at least 3 activation frames (RIP + 2 callers)'
+        $unwoundFrames = @(Read-CrashDoctorHeuristicThreadFrames -Stream $csStream -Thread $testThread -Modules $testModules)
+        Assert-True ($unwoundFrames.Count -ge 3) 'Should return at least 3 heuristic stack-frame candidates (RIP + 2 module-address hits)'
         Assert-Equal $unwoundFrames[0].FrameNumber 0 'Frame 0 is top frame'
         Assert-Equal $unwoundFrames[0].ModuleName 'ntoskrnl.exe' 'Frame 0 module is ntoskrnl.exe'
         Assert-Equal $unwoundFrames[0].Offset '0x1020' 'Frame 0 offset is 0x1020'
@@ -338,8 +338,8 @@ try {
         Assert-Equal $unwoundFrames[1].Offset '0x3050' 'Frame 1 offset is 0x3050'
 
         # Thread ranking test
-        $allThreadStacks = @(Get-CrashDoctorThreadCallStacks -Stream $csStream -Threads @($testThread) -Modules $testModules -FaultingThreadId 555)
-        Assert-Equal $allThreadStacks.Count 1 '1 thread stack unwound'
+        $allThreadStacks = @(Get-CrashDoctorHeuristicThreadStacks -Stream $csStream -Threads @($testThread) -Modules $testModules -FaultingThreadId 555)
+        Assert-Equal $allThreadStacks.Count 1 '1 heuristic thread stack produced'
         Assert-Equal $allThreadStacks[0].Rank 1 'Faulting thread is ranked 1'
         Assert-Equal $allThreadStacks[0].Tag 'FAULTING_THREAD' 'Tag is FAULTING_THREAD'
     }
