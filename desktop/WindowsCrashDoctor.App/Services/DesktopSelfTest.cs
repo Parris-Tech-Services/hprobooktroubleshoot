@@ -30,7 +30,7 @@ public static class DesktopSelfTest
             foreach (var required in new[]
             {
                 engine.CollectorPath, engine.CrashDoctorPath, engine.NetworkDoctorPath, engine.TelemetryPath,
-                engine.DumpParserPath, engine.WerDoctorPath, engine.IntegrationManagerPath, engine.VersionPath, engine.RegistryPath
+                engine.DumpParserPath, engine.WerDoctorPath, engine.SymbolServerPath, engine.IntegrationManagerPath, engine.VersionPath, engine.RegistryPath
             })
                 if (!File.Exists(required)) throw new InvalidOperationException($"Embedded engine self-test missing required file: {required}");
 

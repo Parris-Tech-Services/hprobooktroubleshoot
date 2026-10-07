@@ -102,6 +102,10 @@ jobs:
         shell: powershell
         run: .\windows-crash-doctor\tests\wer-doctor-test.ps1
 
+      - name: Run Microsoft symbol server and cache regression test
+        shell: powershell
+        run: .\windows-crash-doctor\tests\symbol-server-test.ps1
+
       - name: Run integration self-test
         shell: powershell
         run: .\windows-crash-doctor\tests\integration-self-test.ps1 -RepositoryMode

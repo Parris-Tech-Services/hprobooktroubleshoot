@@ -79,7 +79,23 @@ try {
     Assert-True (@($report.Streams | Where-Object Name -eq 'ModuleListStream').Count -eq 1) 'real minidump should contain ModuleListStream'
     Assert-True (@($report.Streams | Where-Object Name -eq 'ThreadListStream').Count -eq 1) 'real minidump should contain ThreadListStream'
 
-    Write-Host "Real DbgHelp minidump parsed: $($report.ModuleCount) modules, $($report.ThreadCount) threads, $($report.Header.NumberOfStreams) streams."
+    # WCD-004 & WCD-005: Call stack unwinding on real Windows minidump
+    Assert-True ($report.CallStacks.Count -gt 0) 'real minidump should yield per-thread call stacks'
+    $hasUnwoundFrames = $false
+    foreach ($cs in $report.CallStacks) {
+        if ($cs.Frames -and $cs.Frames.Count -gt 0) {
+            $hasUnwoundFrames = $true
+            break
+        }
+    }
+    Assert-True $hasUnwoundFrames 'at least one thread in real minidump should have unwound activation frames'
+
+    # WCD-002: Module PDB RSDS information extraction
+    $pdbMods = @($report.Modules | Where-Object { $null -ne $_.PdbInfo })
+    Assert-True ($pdbMods.Count -gt 0) 'real minidump loaded modules should contain CodeView RSDS PDB info'
+    Assert-True ($pdbMods[0].PdbInfo.SymbolKey -match '^[^\/]+\.pdb\/[0-9A-F]+[0-9A-Fa-f]*\/[^\/]+\.pdb$') 'PDB SymbolKey matches standard Microsoft symbol path pattern'
+
+    Write-Host "Real DbgHelp minidump parsed: $($report.ModuleCount) modules ($($pdbMods.Count) with PDB info), $($report.ThreadCount) threads ($($report.CallStacks.Count) call stacks), $($report.Header.NumberOfStreams) streams."
     Write-Host 'Windows Crash Doctor real minidump smoke test: PASS'
 }
 finally {

@@ -271,6 +271,117 @@ try {
     # Crash history properties verification.
     Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'ProblemClassification') 'Crash history record has ProblemClassification'
     Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'StackDrivers') 'Crash history record has StackDrivers'
+    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'BugCheckAnalysis') 'Crash history record has BugCheckAnalysis'
+    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'FaultingCallStack') 'Crash history record has FaultingCallStack'
+    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'CallStacks') 'Crash history record has CallStacks'
+
+    # WCD-003: BugCheck and Exception decoding tests (!analyze -v style)
+    $bcaIrql = Get-CrashDoctorBugCheckAnalysis -BugCheckCode 0x0A -Parameters @(0x1000L, 2L, 0L, 0xFFFFF80012345678L) -FaultingModule 'badnet.sys'
+    Assert-Equal $bcaIrql.BugCheckName 'IRQL_NOT_LESS_OR_EQUAL' '0x0A bugcheck name'
+    Assert-Equal $bcaIrql.ProblemFamily 'Driver' '0x0A family is Driver'
+    Assert-Equal $bcaIrql.FailureBucket 'AV_IRQL_badnet.sys' '0x0A failure bucket'
+    Assert-Equal $bcaIrql.Parameters.Count 4 '0x0A has 4 decoded parameters'
+    Assert-Equal $bcaIrql.Parameters[1].Name 'IRQL Level' '0x0A P2 name is IRQL Level'
+
+    $bcaMem = Get-CrashDoctorBugCheckAnalysis -BugCheckCode 0x1A -Parameters @(0x403L, 0x1000L, 0x2000L, 0x3000L)
+    Assert-Equal $bcaMem.ProblemFamily 'MemoryCorruption' '0x1A family is MemoryCorruption'
+    Assert-True ($bcaMem.Explanation -like '*Page table page corruption*') '0x1A P1=0x403 subtype explanation'
+
+    $bcaTdr = Get-CrashDoctorBugCheckAnalysis -BugCheckCode 0x116 -FaultingModule 'nvlddmkm.sys'
+    Assert-Equal $bcaTdr.ProblemFamily 'Driver' '0x116 family is Driver'
+    Assert-True ($bcaTdr.RecommendedAction -like '*nvlddmkm.sys*') '0x116 recommendation references faulting module'
+
+    $bcaAv = Get-CrashDoctorBugCheckAnalysis -BugCheckCode 0xC0000005L -Parameters @(0L, 0x00007FF712340000L) -FaultingModule 'app.exe'
+    Assert-Equal $bcaAv.ProblemFamily 'SystemSoftware' 'User-mode AV family'
+    Assert-Equal $bcaAv.Parameters.Count 2 'AV has 2 parameters'
+    Assert-Equal $bcaAv.Parameters[0].Name 'Access Type' 'AV P1 is Access Type'
+
+    # WCD-004 & WCD-005: Call stack unwinding and per-thread call stacks
+    $fakeDumpPath = Join-Path $temp 'callstack-test.bin'
+    $fakeDumpBytes = New-Object byte[] 512
+
+    # Context structure: at offset 0 (size 0x100): Rip at offset 0xF8, Rsp at 0x98, Rbp at 0xA0
+    Set-U64 $fakeDumpBytes 0xF8 0x00007FF800001020 # Rip -> ntoskrnl.exe+0x1020
+    Set-U64 $fakeDumpBytes 0x98 0x0000008000002000 # Rsp
+    Set-U64 $fakeDumpBytes 0xA0 0x0000008000002040 # Rbp
+
+    # Stack memory: at offset 256 (size 128): StackMemoryBase = 0x0000008000002000
+    # Stack offset 0 (0x0000008000002000): caller return address into myfilter.sys
+    Set-U64 $fakeDumpBytes (256 + 0) 0x00007FF810003050 # myfilter.sys+0x3050
+    # Stack offset 16 (0x0000008000002010): caller return address into ntoskrnl.exe
+    Set-U64 $fakeDumpBytes (256 + 16) 0x00007FF800006080 # ntoskrnl.exe+0x6080
+
+    [IO.File]::WriteAllBytes($fakeDumpPath, $fakeDumpBytes)
+    $csStream = [System.IO.File]::OpenRead($fakeDumpPath)
+    try {
+        $testThread = [pscustomobject]@{
+            ThreadId        = 555
+            ContextRva      = 0
+            ContextDataSize = 256
+            StackRva        = 256
+            StackDataSize   = 128
+            StackMemoryBase = [uint64]0x0000008000002000
+        }
+        $testModules = @(
+            [pscustomobject]@{ Name = 'ntoskrnl.exe'; BaseOfImage = [uint64]0x00007FF800000000; SizeOfImage = [uint32]0x50000 },
+            [pscustomobject]@{ Name = 'myfilter.sys'; BaseOfImage = [uint64]0x00007FF810000000; SizeOfImage = [uint32]0x20000 }
+        )
+
+        $unwoundFrames = @(Read-CrashDoctorCallStack -Stream $csStream -Thread $testThread -Modules $testModules)
+        Assert-True ($unwoundFrames.Count -ge 3) 'Should unwind at least 3 activation frames (RIP + 2 callers)'
+        Assert-Equal $unwoundFrames[0].FrameNumber 0 'Frame 0 is top frame'
+        Assert-Equal $unwoundFrames[0].ModuleName 'ntoskrnl.exe' 'Frame 0 module is ntoskrnl.exe'
+        Assert-Equal $unwoundFrames[0].Offset '0x1020' 'Frame 0 offset is 0x1020'
+
+        Assert-Equal $unwoundFrames[1].FrameNumber 1 'Frame 1'
+        Assert-Equal $unwoundFrames[1].ModuleName 'myfilter.sys' 'Frame 1 module is myfilter.sys'
+        Assert-Equal $unwoundFrames[1].Offset '0x3050' 'Frame 1 offset is 0x3050'
+
+        # Thread ranking test
+        $allThreadStacks = @(Get-CrashDoctorThreadCallStacks -Stream $csStream -Threads @($testThread) -Modules $testModules -FaultingThreadId 555)
+        Assert-Equal $allThreadStacks.Count 1 '1 thread stack unwound'
+        Assert-Equal $allThreadStacks[0].Rank 1 'Faulting thread is ranked 1'
+        Assert-Equal $allThreadStacks[0].Tag 'FAULTING_THREAD' 'Tag is FAULTING_THREAD'
+    }
+    finally {
+        $csStream.Dispose()
+    }
+
+    # Markdown format verification: Ensure call stack and candidate drivers are clearly distinct
+    $mockReport = [pscustomobject][ordered]@{
+        Path                  = 'C:\CrashDumps\sample.dmp'
+        FileName              = 'sample.dmp'
+        FileSize              = 102400
+        CrashTimeUtc          = '2026-10-07T00:00:00Z'
+        CrashTimeLocal        = '2026-10-07 10:00:00'
+        Format                = 'MiniDump'
+        Architecture          = 'x64'
+        BugCheckCode          = '0x0000000A'
+        BugCheckName          = 'IRQL_NOT_LESS_OR_EQUAL'
+        BugCheckParameters    = @('0x1000', '0x2', '0x0', '0xFFFFF80012345678')
+        FaultingModule        = 'myfilter.sys'
+        ExceptionAddress      = '0xFFFFF80012345678'
+        ProblemClassification = $classDriver
+        BugCheckAnalysis      = $bcaIrql
+        FaultingCallStack     = [pscustomobject]@{
+            ThreadId   = 555
+            FrameCount = 2
+            Frames     = @(
+                [pscustomobject]@{ FrameNumber = 0; ModuleName = 'ntoskrnl.exe'; Symbol = 'ntoskrnl.exe+0x1020'; ReturnAddress = $null },
+                [pscustomobject]@{ FrameNumber = 1; ModuleName = 'myfilter.sys'; Symbol = 'myfilter.sys+0x3050'; ReturnAddress = '0x00007FF810003050' }
+            )
+        }
+        CallStacks            = @()
+        StackDrivers          = @([pscustomobject]@{ Name = 'myfilter.sys'; IsCoreComponent = $false })
+        Valid                 = $true
+        Error                 = $null
+    }
+
+    $md = ConvertTo-CrashDoctorCrashHistoryMarkdown -Crashes @($mockReport)
+    Assert-True ($md -like '*Failure bucket ID*AV_IRQL_badnet.sys*') 'Markdown includes failure bucket ID'
+    Assert-True ($md -like '*Faulting call stack (unwound activation frames)*') 'Markdown includes unwound call stack header'
+    Assert-True ($md -like '*ntoskrnl.exe+0x1020*') 'Markdown contains unwound symbol'
+    Assert-True ($md -like '*Candidate stack-involved drivers (raw memory scan)*') 'Markdown keeps candidate stack drivers clearly separate'
 
     Write-Host 'Windows Crash Doctor dump parser test: PASS'
 }

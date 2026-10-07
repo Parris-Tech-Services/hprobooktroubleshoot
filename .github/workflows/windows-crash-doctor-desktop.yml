@@ -85,12 +85,13 @@ jobs:
         shell: powershell
         run: .\windows-crash-doctor\NetworkDoctor.ps1 -SelfTest
 
-      - name: Run native dump and WER regression tests
+      - name: Run native dump, WER, and symbol regression tests
         shell: powershell
         run: |
           .\windows-crash-doctor\tests\dump-parser-test.ps1
           .\windows-crash-doctor\tests\dump-parser-real-smoke.ps1
           .\windows-crash-doctor\tests\wer-doctor-test.ps1
+          .\windows-crash-doctor\tests\symbol-server-test.ps1
 
       - name: Run Pester integration suite
         shell: pwsh

@@ -93,9 +93,12 @@ For `MDMP` minidumps Crash Doctor currently parses:
 - header + stream directory with bounds validation;
 - processor architecture and Windows build information;
 - exception thread/code/address/parameters when present;
-- loaded-module list and module names;
-- thread count and thread stack memory descriptors (`MINIDUMP_THREAD`);
-- candidate driver addresses active on the crash stack mapped to module names (`WCD-023`);
+- loaded-module list, module base/size/timestamps, and CodeView `RSDS` PDB metadata (`WCD-002`);
+- thread count, context registers (RIP, RSP, RBP / EIP, ESP, EBP), and thread stack memory descriptors (`MINIDUMP_THREAD`);
+- true call-stack unwinding with activation frames, instruction pointers, module mapping, symbol offsets, and return addresses (`WCD-004`, `WCD-005`);
+- per-thread call-stack ranking (`FAULTING_THREAD`, `ACTIVE_WORKER`, `IDLE_THREAD`);
+- candidate driver addresses active in raw stack memory mapped to module names (`WCD-023`, explicitly kept distinct from true unwound call stacks);
+- automated bugcheck and exception decoding with Failure Bucket IDs and parameter tables comparable to `!analyze -v` (`WCD-003`);
 - bounded problem family classification: `Driver`, `Hardware`, `MemoryCorruption`, `StorageFileSystem`, `PowerThermal`, `SystemSoftware` (`WCD-018`);
 - `MemoryList`, `Memory64List` and `MemoryInfoList` summary metadata;
 - known stream names while retaining unknown stream IDs.
@@ -106,9 +109,17 @@ For Windows kernel crash-dump containers Crash Doctor currently recognises:
 - machine architecture;
 - processor count;
 - bugcheck code and four parameters;
+- automated bugcheck decoding and failure bucket identification (`WCD-003`);
 - bounded problem family classification (`WCD-018`);
 - key dump-header pointers/metadata;
 - 64-bit dump-type/size/time metadata where available.
+
+## Microsoft Symbol Server & Local Cache (`SymbolServer.psm1`)
+
+Windows Doctor includes native Microsoft symbol server integration (`WCD-002`):
+- **Symbol Server Client (`Get-CrashDoctorSymbolConfig` / `Set-CrashDoctorSymbolConfig`)**: Configures upstream symbol server (default `https://msdl.microsoft.com/download/symbols`), local cache path (default `%LOCALAPPDATA%\WindowsDoctor\Symbols`), offline mode toggle, and custom timeouts. Automatically recognizes `_NT_SYMBOL_PATH` if configured.
+- **CodeView RSDS Extraction (`Get-CrashDoctorModulePdbInfo`)**: Extracts RSDS records (`0x53445352`), 16-byte GUIDs, Age, and PDB file names from minidump modules, generating standard Microsoft symbol keys (`name.pdb/GUIDAGE/name.pdb`).
+- **Symbol Lookup (`Find-CrashDoctorSymbol`)**: Checks local cache, validates file existence and size, respects offline mode without network calls, and performs bounded HTTP downloads with timeout handling and rollback on failure.
 
 ## Windows Error Reporting & LocalDumps (`WerDoctor.psm1`)
 
@@ -128,7 +139,7 @@ Windows Doctor provides comprehensive native diagnostics for Windows Error Repor
 - additional corruption/truncation fuzz cases;
 - a stable documented dump JSON schema once the native structures settle.
 
-Symbol resolution, deep stack unwinding and source mapping are tracked in `WCD-002`, `WCD-004`, `WCD-005`, and `WCD-009`.
+Source line mapping and function symbol demangling are tracked in `WCD-009`.
 
 ## Snapshot outputs
 

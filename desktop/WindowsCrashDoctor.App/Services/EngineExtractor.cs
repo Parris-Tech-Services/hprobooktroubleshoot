@@ -23,7 +23,8 @@ public sealed class EngineExtractor
             ["WCD.Engine.windows-crash-doctor.Manage-Integrations.ps1"] = Path.Combine("windows-crash-doctor", "Manage-Integrations.ps1"),
             ["WCD.Engine.windows-crash-doctor.version.json"] = Path.Combine("windows-crash-doctor", "version.json"),
             ["WCD.Engine.windows-crash-doctor.integrations.catalog.json"] = Path.Combine("windows-crash-doctor", "integrations", "catalog.json"),
-            ["WCD.Engine.windows-crash-doctor.WerDoctor.psm1"] = Path.Combine("windows-crash-doctor", "WerDoctor.psm1")
+            ["WCD.Engine.windows-crash-doctor.WerDoctor.psm1"] = Path.Combine("windows-crash-doctor", "WerDoctor.psm1"),
+            ["WCD.Engine.windows-crash-doctor.SymbolServer.psm1"] = Path.Combine("windows-crash-doctor", "SymbolServer.psm1")
         };
 
     public string RootPath { get; }
@@ -33,6 +34,7 @@ public sealed class EngineExtractor
     public string TelemetryPath => Path.Combine(RootPath, "windows-crash-doctor", "TelemetryAnalysis.psm1");
     public string DumpParserPath => Path.Combine(RootPath, "windows-crash-doctor", "DumpParser.psm1");
     public string WerDoctorPath => Path.Combine(RootPath, "windows-crash-doctor", "WerDoctor.psm1");
+    public string SymbolServerPath => Path.Combine(RootPath, "windows-crash-doctor", "SymbolServer.psm1");
     public string IntegrationManagerPath => Path.Combine(RootPath, "windows-crash-doctor", "Manage-Integrations.ps1");
     public string VersionPath => Path.Combine(RootPath, "windows-crash-doctor", "version.json");
     public string RegistryPath => Path.Combine(RootPath, "windows-crash-doctor", "diagnostics", "registry.json");

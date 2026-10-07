@@ -1,5 +1,10 @@
 Set-StrictMode -Version Latest
 
+$symbolModule = Join-Path $PSScriptRoot 'SymbolServer.psm1'
+if (Test-Path -LiteralPath $symbolModule -PathType Leaf) {
+    Import-Module $symbolModule -Force
+}
+
 $script:MiniDumpSignature = 0x504d444d # 'MDMP'
 $script:KernelDumpSignature = 0x45474150 # 'PAGE'
 $script:KernelDumpValid32 = 0x504d5544 # 'DUMP'
@@ -174,6 +179,36 @@ function Get-CrashDoctorInt64 {
     return [BitConverter]::ToInt64($Bytes, $Offset)
 }
 
+function ConvertTo-CrashDoctorUInt64 {
+    param($Value)
+    if ($null -eq $Value) { return [uint64]0 }
+    if ($Value -is [uint64]) { return $Value }
+    if ($Value -is [int64]) {
+        $b = [BitConverter]::GetBytes([int64]$Value)
+        return [BitConverter]::ToUInt64($b, 0)
+    }
+    if ($Value -is [uint32]) { return [uint64]$Value }
+    if ($Value -is [int32]) {
+        $b = [BitConverter]::GetBytes([int32]$Value)
+        return [uint64][BitConverter]::ToUInt32($b, 0)
+    }
+    if ($Value -is [string]) {
+        $s = $Value.Trim()
+        if ($s.StartsWith('0x', [StringComparison]::OrdinalIgnoreCase)) {
+            $s = $s.Substring(2)
+        }
+        $parsed = [uint64]0
+        if ([uint64]::TryParse($s, [Globalization.NumberStyles]::HexNumber, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+            return $parsed
+        }
+    }
+    try {
+        return [uint64]$Value
+    } catch {
+        return [uint64]0
+    }
+}
+
 function Get-CrashDoctorMachineName {
     param([uint32]$MachineType)
     switch ($MachineType) {
@@ -293,12 +328,27 @@ function Read-CrashDoctorMiniDumpModules {
         if ($nameRva -ne 0) {
             try { $name = Read-CrashDoctorMiniDumpString -Stream $Stream -Rva $nameRva } catch { $name = $null }
         }
+
+        # CodeView Record (PDB RSDS info) at offset 76
+        $cvDataSize = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 76
+        $cvRva = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 80
+        $pdbInfo = $null
+        if ($cvDataSize -ge 24 -and $cvRva -ne 0 -and ($cvRva + $cvDataSize) -le $Stream.Length) {
+            try {
+                $cvBytes = Read-CrashDoctorBytes -Stream $Stream -Offset $cvRva -Count $cvDataSize
+                if (Get-Command Get-CrashDoctorModulePdbInfo -ErrorAction SilentlyContinue) {
+                    $pdbInfo = Get-CrashDoctorModulePdbInfo -CvBytes $cvBytes
+                }
+            } catch { }
+        }
+
         $modules.Add([pscustomobject][ordered]@{
-            BaseOfImage = Get-CrashDoctorUInt64 -Bytes $bytes -Offset 0
-            SizeOfImage = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 8
-            Checksum = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 12
+            BaseOfImage   = Get-CrashDoctorUInt64 -Bytes $bytes -Offset 0
+            SizeOfImage   = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 8
+            Checksum      = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 12
             TimeDateStamp = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 16
-            Name = $name
+            Name          = $name
+            PdbInfo       = $pdbInfo
         })
     }
     return $modules.ToArray()
@@ -662,6 +712,466 @@ function Get-CrashDoctorProblemClassification {
     }
 }
 
+function Get-CrashDoctorBugCheckAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] $BugCheckCode,
+        [object[]] $Parameters = @(),
+        [string] $FaultingModule = $null,
+        $ExceptionAddress = $null,
+        [string] $Architecture = 'x64'
+    )
+
+    $u = [uint32]0
+    if ($BugCheckCode -is [string]) {
+        $clean = $BugCheckCode.Trim()
+        if ($clean.StartsWith('0x', [StringComparison]::OrdinalIgnoreCase)) {
+            $clean = $clean.Substring(2)
+        }
+        $parsed = [uint32]0
+        if ([uint32]::TryParse($clean, [Globalization.NumberStyles]::HexNumber, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+            $u = $parsed
+        }
+    }
+    elseif ($BugCheckCode -is [uint32]) {
+        $u = $BugCheckCode
+    }
+    else {
+        $bytes = [BitConverter]::GetBytes([int64]$BugCheckCode)
+        $u = [BitConverter]::ToUInt32($bytes, 0)
+    }
+
+    $bugCheckHex = ('0x{0:X}' -f $u).ToUpperInvariant()
+    $bugCheckName = Get-CrashDoctorBugCheckName -Code $u
+
+    $paramList = New-Object System.Collections.Generic.List[object]
+    if ($null -ne $Parameters) {
+        foreach ($p in $Parameters) {
+            if ($null -ne $p) { $paramList.Add($p) }
+        }
+    }
+
+    $p1 = if ($paramList.Count -gt 0) { ConvertTo-CrashDoctorUInt64 $paramList[0] } else { [uint64]0 }
+    $p2 = if ($paramList.Count -gt 1) { ConvertTo-CrashDoctorUInt64 $paramList[1] } else { [uint64]0 }
+    $p3 = if ($paramList.Count -gt 2) { ConvertTo-CrashDoctorUInt64 $paramList[2] } else { [uint64]0 }
+    $p4 = if ($paramList.Count -gt 3) { ConvertTo-CrashDoctorUInt64 $paramList[3] } else { [uint64]0 }
+
+    $pDetails = New-Object System.Collections.Generic.List[object]
+    $failureBucket = $null
+    $summary = ''
+    $explanation = ''
+    $recommended = ''
+    $problemFamily = 'Unknown'
+
+    switch ($u) {
+        # 0x0A: IRQL_NOT_LESS_OR_EQUAL
+        0x0A {
+            $problemFamily = 'Driver'
+            $accessType = switch ($p3) { 0 { 'Read' } 1 { 'Write' } 8 { 'Execute' } default { "Access($p3)" } }
+            $irqlName = switch ($p2) { 2 { 'DISPATCH_LEVEL (2)' } 12 { 'SYNCH_LEVEL (12)' } 15 { 'HIGH_LEVEL (15)' } default { "IRQL $p2" } }
+            $failureBucket = if ($FaultingModule) { "AV_IRQL_$FaultingModule" } else { 'AV_IRQL_NOT_LESS_OR_EQUAL' }
+            $summary = "Kernel memory referenced at an invalid IRQL level ($irqlName)."
+            $explanation = "An operating system thread referenced pageable or invalid virtual memory at an interrupt request level (IRQL) that does not permit page faults. The operation was a $accessType of address 0x{0:X16} by instruction at 0x{1:X16}." -f $p1, $p4
+            $recommended = if ($FaultingModule) { "Update, roll back or reinstall $FaultingModule." } else { 'Update device drivers; inspect driver verifier logs.' }
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'Memory Referenced'; Description = ('Virtual address referenced: 0x{0:X16}' -f $p1) })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'IRQL Level'; Description = $irqlName })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'Access Type'; Description = "$accessType operation (0=Read, 1=Write, 8=Execute)" })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Instruction Address'; Description = ('Address of instruction referencing memory: 0x{0:X16}' -f $p4) })
+        }
+
+        # 0x1A: MEMORY_MANAGEMENT
+        0x1A {
+            $problemFamily = 'MemoryCorruption'
+            $subtype = switch ($p1) {
+                0x403   { 'Page table page corruption detected during trim or unmap.' }
+                0x411   { 'PTE or PFN list entry corrupted.' }
+                0x41284 { 'Working set list corruption detected by memory manager.' }
+                0x41792 { 'Page corruption detected during file mapping or transition.' }
+                0x41790 { 'Page table page allocation failure; system exhausted nonpaged resources.' }
+                0x61941 { 'Corrupt paging hierarchy or page table entry (PTE).' }
+                default { ('Memory management corruption subtype 0x{0:X}.' -f $p1) }
+            }
+            $failureBucket = ('MEMORY_MANAGEMENT_0x{0:X}' -f $p1)
+            $summary = "Internal memory manager detected corruption ($subtype)."
+            $explanation = "Windows Memory Manager encountered severe inconsistency in page table entries, physical frame number (PFN) metadata, or working set structures. Subtype: $subtype."
+            $recommended = 'Run Windows Memory Diagnostic (mdsched.exe) or MemTest86, verify RAM XMP/EXPO settings, and test individual DIMMs.'
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'Subtype Code'; Description = $subtype })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'Target Address'; Description = ('Virtual address or PFN: 0x{0:X16}' -f $p2) })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'PTE / Data Value'; Description = ('PTE contents or original value: 0x{0:X16}' -f $p3) })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Fault Context'; Description = ('Internal context / secondary address: 0x{0:X16}' -f $p4) })
+        }
+
+        # 0x3B: SYSTEM_SERVICE_EXCEPTION
+        0x3B {
+            $problemFamily = 'SystemSoftware'
+            $excHex = ('0x{0:X8}' -f [uint32]$p1)
+            $excName = Get-CrashDoctorBugCheckName -Code ([uint32]$p1)
+            $failureBucket = if ($FaultingModule) { "SYSTEM_SERVICE_EXCEPTION_$FaultingModule" } else { "SYSTEM_SERVICE_EXCEPTION_$excName" }
+            $summary = "Unhandled exception in kernel-mode system service code ($excName)."
+            $explanation = "A system routine executed by the operating system kernel or a subsystem component generated an unhandled exception ($excHex - $excName) at instruction 0x{0:X16}." -f $p2
+            $recommended = 'Run sfc /scannow and DISM /Online /Cleanup-Image /RestoreHealth to verify system components.'
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'Exception Code'; Description = ("Exception that caused the bugcheck: {0} ({1})" -f $excHex, $excName) })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'Instruction Address'; Description = ('Address of instruction causing exception: 0x{0:X16}' -f $p2) })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'Context Record'; Description = ('Pointer to CONTEXT record: 0x{0:X16}' -f $p3) })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Reserved'; Description = ('Reserved / secondary parameter: 0x{0:X16}' -f $p4) })
+        }
+
+        # 0x50: PAGE_FAULT_IN_NONPAGED_AREA
+        0x50 {
+            $problemFamily = if ($FaultingModule -and $FaultingModule -match '(?i)\.sys$') { 'Driver' } else { 'MemoryCorruption' }
+            $accessType = switch ($p2) { 0 { 'Read' } 1 { 'Write' } 8 { 'Execute' } default { "Access($p2)" } }
+            $failureBucket = if ($FaultingModule) { "PAGE_FAULT_$FaultingModule" } else { "PAGE_FAULT_IN_NONPAGED_AREA_$accessType" }
+            $summary = "Invalid system memory referenced ($accessType access to 0x{0:X16})." -f $p1
+            $explanation = "The operating system referenced unmapped memory or invalid non-paged memory during a $accessType operation at instruction 0x{0:X16}." -f $p3
+            $recommended = if ($problemFamily -eq 'Driver') { "Update or rollback driver $FaultingModule." } else { 'Test system memory with Windows Memory Diagnostic (mdsched.exe).' }
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'Invalid Address'; Description = ('Memory address referenced: 0x{0:X16}' -f $p1) })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'Access Type'; Description = "$accessType operation (0=Read, 1=Write, 8=Execute)" })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'Instruction Address'; Description = ('Instruction referencing invalid address: 0x{0:X16}' -f $p3) })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Fault Type'; Description = ('Fault type / non-paged pool status: 0x{0:X16}' -f $p4) })
+        }
+
+        # 0x7E: SYSTEM_THREAD_EXCEPTION_NOT_HANDLED
+        0x7E {
+            $problemFamily = if ($FaultingModule -and $FaultingModule -match '(?i)\.sys$') { 'Driver' } else { 'SystemSoftware' }
+            $excHex = ('0x{0:X8}' -f [uint32]$p1)
+            $excName = Get-CrashDoctorBugCheckName -Code ([uint32]$p1)
+            $failureBucket = if ($FaultingModule) { "THREAD_EXCEPTION_$FaultingModule" } else { "THREAD_EXCEPTION_$excName" }
+            $summary = "System thread generated an unhandled exception ($excName)."
+            $explanation = "A system worker thread encountered an unhandled exception ($excHex - $excName) at instruction 0x{0:X16}." -f $p2
+            $recommended = if ($FaultingModule) { "Update or reinstall $FaultingModule." } else { 'Inspect recent driver and system updates.' }
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'Exception Code'; Description = ("Exception code: {0} ({1})" -f $excHex, $excName) })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'Instruction Address'; Description = ('Address where exception occurred: 0x{0:X16}' -f $p2) })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'Exception Record'; Description = ('Pointer to EXCEPTION_RECORD: 0x{0:X16}' -f $p3) })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Context Record'; Description = ('Pointer to CONTEXT record: 0x{0:X16}' -f $p4) })
+        }
+
+        # 0x116: VIDEO_TDR_FAILURE
+        0x116 {
+            $problemFamily = 'Driver'
+            $failureBucket = if ($FaultingModule) { "VIDEO_TDR_FAILURE_$FaultingModule" } else { 'VIDEO_TDR_FAILURE' }
+            $summary = "Display driver failed to respond to timeout detection and recovery (TDR)."
+            $explanation = "The graphics driver failed to respond to a display scheduler interrupt within the allotted timeout period. Windows attempted a GPU reset (TDR) which failed or was not acknowledged by the display miniport driver."
+            $recommended = if ($FaultingModule) { "Clean install or update graphics driver $FaultingModule using DDU or official GPU vendor drivers." } else { 'Update or reinstall the display graphics driver.' }
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'TDR Context'; Description = ('Pointer to TDR recovery context: 0x{0:X16}' -f $p1) })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'Miniport Device Extension'; Description = ('Pointer to miniport device context: 0x{0:X16}' -f $p2) })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'Driver Error Code'; Description = ('Driver subsystem error code: 0x{0:X16}' -f $p3) })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Internal State / Subcode'; Description = ('Subsystem internal state: 0x{0:X16}' -f $p4) })
+        }
+
+        # 0x133: DPC_WATCHDOG_VIOLATION
+        0x133 {
+            $problemFamily = 'Driver'
+            $failureBucket = if ($FaultingModule) { "DPC_WATCHDOG_VIOLATION_$FaultingModule" } else { 'DPC_WATCHDOG_VIOLATION' }
+            $subtype = switch ($p1) {
+                0 { 'Single DPC routine exceeded execution time limit.' }
+                1 { 'Cumulative time spent at DISPATCH_LEVEL exceeded watchdog limit.' }
+                default { "DPC watchdog violation subtype $p1" }
+            }
+            $summary = "Deferred Procedure Call (DPC) watchdog timeout ($subtype)."
+            $explanation = "The DPC watchdog detected that an operating system driver spent an excessive duration executing at DISPATCH_LEVEL or a single DPC routine ran too long without yielding CPU."
+            $recommended = if ($FaultingModule) { "Update or rollback driver $FaultingModule, or inspect driver trace logs for high DPC latency." } else { 'Update device drivers; inspect DPC/ISR latency with LatencyMon or Windows Performance Analyzer.' }
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'Violation Subtype'; Description = $subtype })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'DPC Time Limit (Ticks)'; Description = ('Watchdog time limit: 0x{0:X16}' -f $p2) })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'DPC Time Spent (Ticks)'; Description = ('Time spent in DPC: 0x{0:X16}' -f $p3) })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Reserved / Parameter 4'; Description = ('Context pointer or parameter: 0x{0:X16}' -f $p4) })
+        }
+
+        # 0x124: WHEA_UNCORRECTABLE_ERROR
+        0x124 {
+            $problemFamily = 'Hardware'
+            $source = switch ($p1) {
+                0 { 'Machine Check Exception (MCA)' }
+                4 { 'PCI Express Error (PCIe AER)' }
+                11 { 'Non-Maskable Interrupt (NMI)' }
+                default { "Hardware Error Source ($p1)" }
+            }
+            $failureBucket = "WHEA_UNCORRECTABLE_ERROR_$($source -replace '\s+', '_')"
+            $summary = "Fatal hardware error reported by platform architecture ($source)."
+            $explanation = "Windows Hardware Error Architecture (WHEA) captured an uncorrectable hardware fault from processor cores, caches, memory controllers, or PCIe buses. Source: $source."
+            $recommended = 'Check CPU temperatures/voltages, update BIOS/UEFI firmware, reseat PCIe devices, and inspect PSU power stability.'
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'Error Source'; Description = $source })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'Error Record'; Description = ('Pointer to WHEA_ERROR_RECORD: 0x{0:X16}' -f $p2) })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'MCi_STATUS High'; Description = ('Processor MCi_STATUS high 32 bits: 0x{0:X16}' -f $p3) })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'MCi_STATUS Low'; Description = ('Processor MCi_STATUS low 32 bits: 0x{0:X16}' -f $p4) })
+        }
+
+        # 0xC0000005: STATUS_ACCESS_VIOLATION
+        0xC0000005L {
+            $problemFamily = 'SystemSoftware'
+            $accessType = switch ($p1) { 0 { 'Read' } 1 { 'Write' } 8 { 'Execute (DEP)' } default { "Access($p1)" } }
+            $failureBucket = if ($FaultingModule) { "AV_$FaultingModule" } else { "AV_$accessType" }
+            $targetHex = ('0x{0:X16}' -f $p2)
+            $summary = "Access violation ($accessType violation accessing $targetHex)."
+            $explanation = "A thread attempted to perform an invalid $accessType operation on virtual memory address $targetHex without proper memory access permissions or into unallocated address space."
+            $recommended = if ($FaultingModule) { "Review $FaultingModule for null pointer dereferences or buffer corruption." } else { 'Inspect application crash logs and faulting modules.' }
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'Access Type'; Description = "$accessType violation (0=Read, 1=Write, 8=Execute/DEP)" })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'Target Memory Address'; Description = ("Memory address accessed: {0}" -f $targetHex) })
+            if ($paramList.Count -ge 3) {
+                $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'Reserved / Instruction'; Description = ('Secondary address / context: 0x{0:X16}' -f $p3) })
+            }
+            if ($paramList.Count -ge 4) {
+                $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Reserved'; Description = ('Reserved: 0x{0:X16}' -f $p4) })
+            }
+        }
+
+        # 0xE0434352: CLR_EXCEPTION
+        0xE0434352L {
+            $problemFamily = 'SystemSoftware'
+            $failureBucket = if ($FaultingModule) { "CLR_EXCEPTION_$FaultingModule" } else { 'CLR_EXCEPTION' }
+            $hresultHex = ('0x{0:X8}' -f [uint32]$p1)
+            $summary = "Unhandled Common Language Runtime (.NET) exception ($hresultHex)."
+            $explanation = "A managed .NET application terminated due to an unhandled exception. The runtime raised Win32 exception code 0xE0434352 (ASCII: CCR / CLR) with HRESULT $hresultHex."
+            $recommended = 'Inspect Application event logs and .NET Runtime event source for the managed stack trace and inner exception details.'
+
+            $pDetails.Add([pscustomobject]@{ Index = 1; RawHex = ('0x{0:X16}' -f $p1); Name = 'HRESULT / Subcode'; Description = ("Managed exception HRESULT: {0}" -f $hresultHex) })
+            $pDetails.Add([pscustomobject]@{ Index = 2; RawHex = ('0x{0:X16}' -f $p2); Name = 'Exception Object'; Description = ('Managed exception object address: 0x{0:X16}' -f $p2) })
+            $pDetails.Add([pscustomobject]@{ Index = 3; RawHex = ('0x{0:X16}' -f $p3); Name = 'Reserved'; Description = ('Reserved: 0x{0:X16}' -f $p3) })
+            $pDetails.Add([pscustomobject]@{ Index = 4; RawHex = ('0x{0:X16}' -f $p4); Name = 'Reserved'; Description = ('Reserved: 0x{0:X16}' -f $p4) })
+        }
+
+        default {
+            $problemFamily = if ($FaultingModule -and $FaultingModule -match '(?i)\.sys$') { 'Driver' } elseif ($FaultingModule) { 'SystemSoftware' } else { 'Unknown' }
+            $failureBucket = if ($FaultingModule) { "${bugCheckName}_$FaultingModule" } else { $bugCheckName }
+            $summary = "$bugCheckName ($bugCheckHex)"
+            $explanation = "Bugcheck code $bugCheckHex ($bugCheckName) with parameters: 0x{0:X}, 0x{1:X}, 0x{2:X}, 0x{3:X}." -f $p1, $p2, $p3, $p4
+            $recommended = 'Inspect system event logs around the crash timestamp and cross-reference with device driver status.'
+
+            $count = [Math]::Max(4, $paramList.Count)
+            for ($i = 0; $i -lt $count; $i++) {
+                $v = if ($i -lt $paramList.Count) { ConvertTo-CrashDoctorUInt64 $paramList[$i] } else { [uint64]0 }
+                $pDetails.Add([pscustomobject]@{
+                    Index       = $i + 1
+                    RawHex      = ('0x{0:X16}' -f $v)
+                    Name        = "Parameter $($i + 1)"
+                    Description = ('Raw parameter value: 0x{0:X16}' -f $v)
+                })
+            }
+        }
+    }
+
+    return [pscustomobject][ordered]@{
+        FailureBucket     = $failureBucket
+        BugCheckCode      = $u
+        BugCheckHex       = $bugCheckHex
+        BugCheckName      = $bugCheckName
+        ProblemFamily     = $problemFamily
+        Summary           = $summary
+        Explanation       = $explanation
+        RecommendedAction = $recommended
+        FaultingModule    = $FaultingModule
+        ExceptionAddress  = if ($ExceptionAddress) { ('0x{0:X16}' -f [uint64]$ExceptionAddress) } else { $null }
+        Parameters        = $pDetails.ToArray()
+    }
+}
+
+function Read-CrashDoctorCallStack {
+    [CmdletBinding()]
+    param(
+        [System.IO.FileStream]$Stream,
+        [Parameter(Mandatory = $true)] $Thread,
+        [object[]]$Modules = @(),
+        [string]$Architecture = 'x64',
+        $ExceptionContext = $null,
+        [int]$MaxFrames = 32
+    )
+
+    $ptrSize = if ($Architecture -eq 'x86') { 4 } else { 8 }
+    $frames = New-Object System.Collections.Generic.List[object]
+
+    if ($null -eq $Stream -or $null -eq $Thread) { return @() }
+    $ctxSize = if ($Thread.PSObject.Properties.Name -contains 'ContextDataSize') { [int]$Thread.ContextDataSize } else { 0 }
+    $ctxRva = if ($Thread.PSObject.Properties.Name -contains 'ContextRva') { [int64]$Thread.ContextRva } else { [int64]0 }
+    if ($ctxSize -lt 40 -or $ctxRva -lt 0 -or ($ctxRva + $ctxSize) -gt $Stream.Length) {
+        return @()
+    }
+
+    # Extract thread registers from Context
+    $rip = [uint64]0
+    $rsp = [uint64]0
+    $rbp = [uint64]0
+
+    try {
+        $ctxBytes = Read-CrashDoctorBytes -Stream $Stream -Offset $ctxRva -Count $ctxSize
+        if ($Architecture -eq 'x86') {
+            if ($ctxBytes.Length -ge 0xCC) {
+                $rip = [uint64](Get-CrashDoctorUInt32 -Bytes $ctxBytes -Offset 0xB8) # Eip
+                $rsp = [uint64](Get-CrashDoctorUInt32 -Bytes $ctxBytes -Offset 0xC4) # Esp
+                $rbp = [uint64](Get-CrashDoctorUInt32 -Bytes $ctxBytes -Offset 0xB4) # Ebp
+            }
+        } else {
+            if ($ctxBytes.Length -ge 0x100) {
+                $rip = Get-CrashDoctorUInt64 -Bytes $ctxBytes -Offset 0xF8 # Rip
+                $rsp = Get-CrashDoctorUInt64 -Bytes $ctxBytes -Offset 0x98 # Rsp
+                $rbp = Get-CrashDoctorUInt64 -Bytes $ctxBytes -Offset 0xA0 # Rbp
+            }
+        }
+    } catch { }
+
+    # Helper to find module containing an instruction pointer
+    $findModule = {
+        param([uint64]$addr)
+        foreach ($m in $Modules) {
+            $base = [uint64]$m.BaseOfImage
+            $size = [uint64]$m.SizeOfImage
+            if ($addr -ge $base -and $addr -lt ($base + $size)) {
+                $leaf = [System.IO.Path]::GetFileName([string]$m.Name)
+                if ([string]::IsNullOrWhiteSpace($leaf)) { $leaf = [string]$m.Name }
+                return [pscustomobject]@{
+                    ModuleName  = $leaf
+                    FullPath    = $m.Name
+                    BaseAddress = $base
+                    Offset      = ($addr - $base)
+                }
+            }
+        }
+        return $null
+    }
+
+    # Frame 0: Current Instruction Pointer (RIP/EIP)
+    if ($rip -ne 0) {
+        $f0Mod = & $findModule $rip
+        $f0Name = if ($f0Mod) { $f0Mod.ModuleName } else { 'Unknown' }
+        $f0OffsetHex = if ($f0Mod) { ('0x{0:X}' -f $f0Mod.Offset) } else { $null }
+        $f0Symbol = if ($f0Mod) { "{0}+{1}" -f $f0Name, $f0OffsetHex } else { ('0x{0:X16}' -f $rip) }
+
+        $frames.Add([pscustomobject][ordered]@{
+            FrameNumber        = 0
+            InstructionPointer = ('0x{0:X16}' -f $rip)
+            StackPointer       = ('0x{0:X16}' -f $rsp)
+            FramePointer       = ('0x{0:X16}' -f $rbp)
+            ModuleName         = $f0Name
+            Offset             = $f0OffsetHex
+            Symbol             = $f0Symbol
+            ReturnAddress      = $null
+        })
+    }
+
+    # Walk subsequent frames through stack memory
+    $stackRva = if ($Thread.PSObject.Properties.Name -contains 'StackRva') { [int64]$Thread.StackRva } else { [int64]0 }
+    $stackSize = if ($Thread.PSObject.Properties.Name -contains 'StackDataSize') { [int]$Thread.StackDataSize } else { 0 }
+    $stackBase = if ($Thread.PSObject.Properties.Name -contains 'StackMemoryBase') { [uint64]$Thread.StackMemoryBase } else { [uint64]0 }
+
+    if ($stackRva -gt 0 -and $stackSize -ge $ptrSize -and ($stackRva + $stackSize) -le $Stream.Length) {
+        try {
+            $stackBytes = Read-CrashDoctorBytes -Stream $Stream -Offset $stackRva -Count $stackSize
+            $startPos = if ($rsp -ge $stackBase -and ($rsp - $stackBase) -lt [uint64]$stackSize) {
+                [int]($rsp - $stackBase)
+            } else {
+                0
+            }
+
+            $frameIndex = $frames.Count
+            $lastHitAddr = [uint64]0
+            $maxOffset = $stackSize - $ptrSize
+
+            for ($pos = $startPos; $pos -le $maxOffset; $pos += $ptrSize) {
+                $val = if ($ptrSize -eq 8) {
+                    Get-CrashDoctorUInt64 -Bytes $stackBytes -Offset $pos
+                } else {
+                    [uint64](Get-CrashDoctorUInt32 -Bytes $stackBytes -Offset $pos)
+                }
+
+                if ($val -eq 0 -or $val -eq $lastHitAddr -or $val -eq $rip) { continue }
+
+                $hit = & $findModule $val
+                if ($hit -and $hit.Offset -gt 0x10) {
+                    $modName = $hit.ModuleName
+                    $offsetHex = ('0x{0:X}' -f $hit.Offset)
+                    $symbolStr = "{0}+{1}" -f $modName, $offsetHex
+                    $curSp = $stackBase + [uint64]$pos
+
+                    $frames.Add([pscustomobject][ordered]@{
+                        FrameNumber        = $frameIndex
+                        InstructionPointer = ('0x{0:X16}' -f $val)
+                        StackPointer       = ('0x{0:X16}' -f $curSp)
+                        FramePointer       = $null
+                        ModuleName         = $modName
+                        Offset             = $offsetHex
+                        Symbol             = $symbolStr
+                        ReturnAddress      = ('0x{0:X16}' -f $val)
+                    })
+
+                    $lastHitAddr = $val
+                    $frameIndex++
+                    if ($frameIndex -ge $MaxFrames) { break }
+                }
+            }
+        } catch { }
+    }
+
+    return $frames.ToArray()
+}
+
+function Get-CrashDoctorThreadCallStacks {
+    [CmdletBinding()]
+    param(
+        [System.IO.FileStream]$Stream,
+        [object[]]$Threads,
+        [object[]]$Modules,
+        [uint32]$FaultingThreadId = 0,
+        [string]$Architecture = 'x64',
+        $ExceptionContext = $null,
+        [int]$MaxThreads = 64
+    )
+
+    $threadList = New-Object System.Collections.Generic.List[object]
+    if ($null -ne $Threads) {
+        foreach ($t in $Threads) {
+            if ($null -ne $t -and $t -is [System.Management.Automation.PSObject] -and ($t.PSObject.Properties.Name -contains 'ThreadId')) {
+                $threadList.Add($t)
+            }
+        }
+    }
+    if ($threadList.Count -eq 0) { return @() }
+
+    $callStacks = New-Object System.Collections.Generic.List[object]
+    $maxCount = [Math]::Min($threadList.Count, $MaxThreads)
+    for ($i = 0; $i -lt $maxCount; $i++) {
+        $t = $threadList[$i]
+        $isFaulting = ($FaultingThreadId -ne 0 -and $t.ThreadId -eq $FaultingThreadId)
+        $frames = @(Read-CrashDoctorCallStack -Stream $Stream -Thread $t -Modules $Modules -Architecture $Architecture -ExceptionContext $(if ($isFaulting) { $ExceptionContext } else { $null }))
+
+        $topSymbol = if ($frames.Count -gt 0) { $frames[0].Symbol } else { 'NoFrames' }
+        $hasThirdParty = $false
+        foreach ($f in $frames) {
+            if ($f.ModuleName -and $f.ModuleName -match '(?i)\.sys$' -and $f.ModuleName -notmatch '(?i)^(ntoskrnl|hal|fltmgr|ntfs|ndis|tcpip|ci|win32k)\.sys$') {
+                $hasThirdParty = $true
+                break
+            }
+        }
+
+        $rank = if ($isFaulting) { 1 } elseif ($hasThirdParty) { 2 } else { 3 }
+        $tag = switch ($rank) {
+            1 { 'FAULTING_THREAD' }
+            2 { 'ACTIVE_WORKER' }
+            3 { 'IDLE_THREAD' }
+        }
+
+        $callStacks.Add([pscustomobject][ordered]@{
+            ThreadId         = $t.ThreadId
+            IsFaultingThread = $isFaulting
+            Rank             = $rank
+            Tag              = $tag
+            FrameCount       = $frames.Count
+            TopFrame         = $topSymbol
+            Frames           = $frames
+        })
+    }
+
+    # Sort so faulting thread is first, then active workers, then idle
+    $sorted = @($callStacks | Sort-Object { $_.Rank })
+    return $sorted
+}
+
 function Read-CrashDoctorMiniDump {
     param([System.IO.FileStream]$Stream, [string]$ResolvedPath)
 
@@ -709,6 +1219,22 @@ function Read-CrashDoctorMiniDump {
     $exceptionParams = if ($exception -and $exception.Parameters) { @($exception.Parameters) } else { @() }
     $problemClassification = Get-CrashDoctorProblemClassification -BugCheckCode $exceptionCode -Parameters $exceptionParams -FaultingModule $faultingModule -CandidateDrivers $stackDrivers
 
+    $exceptionAddress = if ($exception) { $exception.ExceptionAddress } else { $null }
+    $bugCheckAnalysis = Get-CrashDoctorBugCheckAnalysis -BugCheckCode $exceptionCode -Parameters $exceptionParams -FaultingModule $faultingModule -ExceptionAddress $exceptionAddress -Architecture $dumpArch
+    $callStacks = @(Get-CrashDoctorThreadCallStacks -Stream $Stream -Threads $threads -Modules $modules -FaultingThreadId $faultingThreadId -Architecture $dumpArch)
+    $faultingCallStack = $null
+    if ($callStacks.Count -gt 0) {
+        foreach ($cs in $callStacks) {
+            if ($null -ne $cs -and ($cs.PSObject.Properties.Name -contains 'IsFaultingThread') -and $cs.IsFaultingThread) {
+                $faultingCallStack = $cs
+                break
+            }
+        }
+        if ($null -eq $faultingCallStack -and ($callStacks[0] -is [System.Management.Automation.PSObject])) {
+            $faultingCallStack = $callStacks[0]
+        }
+    }
+
     return [pscustomobject][ordered]@{
         SchemaVersion = '1.0'
         Path = $ResolvedPath
@@ -727,6 +1253,9 @@ function Read-CrashDoctorMiniDump {
         SystemInfo = $systemInfo
         Exception = $exception
         FaultingModule = $faultingModule
+        BugCheckAnalysis = $bugCheckAnalysis
+        FaultingCallStack = $faultingCallStack
+        CallStacks = @($callStacks)
         ModuleCount = @($modules).Count
         Modules = @($modules)
         ThreadCount = $threadCount
@@ -736,7 +1265,7 @@ function Read-CrashDoctorMiniDump {
         Memory64 = $memory64
         MemoryInfo = $memoryInfo
         Streams = $directories.ToArray()
-        ParseCoverage = 'Header, stream directory, system info, exception, modules, thread stack drivers and memory summaries'
+        ParseCoverage = 'Header, stream directory, system info, exception, bugcheck analysis, modules, call stacks, thread stack drivers and memory summaries'
     }
 }
 
@@ -766,15 +1295,20 @@ function Read-CrashDoctorKernelDump64 {
     $p3 = Get-CrashDoctorUInt64 -Bytes $header -Offset 80
     $p4 = Get-CrashDoctorUInt64 -Bytes $header -Offset 88
     $params = @($p1, $p2, $p3, $p4)
+    $arch = Get-CrashDoctorMachineName -MachineType (Get-CrashDoctorUInt32 -Bytes $header -Offset 48)
     $classification = Get-CrashDoctorProblemClassification -BugCheckCode $bugCheckCode -Parameters $params
+    $bugCheckAnalysis = Get-CrashDoctorBugCheckAnalysis -BugCheckCode $bugCheckCode -Parameters $params -Architecture $arch
 
     return [pscustomobject][ordered]@{
         SchemaVersion = '1.0'
         Path = $ResolvedPath
         FileSize = $Stream.Length
         Format = 'KernelCrashDump'
-        Architecture = Get-CrashDoctorMachineName -MachineType (Get-CrashDoctorUInt32 -Bytes $header -Offset 48)
+        Architecture = $arch
         ProblemClassification = $classification
+        BugCheckAnalysis = $bugCheckAnalysis
+        FaultingCallStack = $null
+        CallStacks = @()
         StackDrivers = @()
         Header = [pscustomobject][ordered]@{
             Signature = 'PAGE'
@@ -804,7 +1338,7 @@ function Read-CrashDoctorKernelDump64 {
             SuiteMask = Get-CrashDoctorUInt32 -Bytes $header -Offset 4164
             WriterStatus = Get-CrashDoctorUInt32 -Bytes $header -Offset 4168
         }
-        ParseCoverage = 'DUMP_HEADER64 metadata only; physical memory pages are not yet traversed'
+        ParseCoverage = 'DUMP_HEADER64 metadata and bugcheck analysis; physical memory pages are not yet traversed'
     }
 }
 
@@ -818,15 +1352,20 @@ function Read-CrashDoctorKernelDump32 {
     $p3 = Get-CrashDoctorUInt32 -Bytes $header -Offset 52
     $p4 = Get-CrashDoctorUInt32 -Bytes $header -Offset 56
     $params = @($p1, $p2, $p3, $p4)
+    $arch = Get-CrashDoctorMachineName -MachineType (Get-CrashDoctorUInt32 -Bytes $header -Offset 32)
     $classification = Get-CrashDoctorProblemClassification -BugCheckCode $bugCheckCode -Parameters $params
+    $bugCheckAnalysis = Get-CrashDoctorBugCheckAnalysis -BugCheckCode $bugCheckCode -Parameters $params -Architecture $arch
 
     return [pscustomobject][ordered]@{
         SchemaVersion = '1.0'
         Path = $ResolvedPath
         FileSize = $Stream.Length
         Format = 'KernelCrashDump'
-        Architecture = Get-CrashDoctorMachineName -MachineType (Get-CrashDoctorUInt32 -Bytes $header -Offset 32)
+        Architecture = $arch
         ProblemClassification = $classification
+        BugCheckAnalysis = $bugCheckAnalysis
+        FaultingCallStack = $null
+        CallStacks = @()
         StackDrivers = @()
         Header = [pscustomobject][ordered]@{
             Signature = 'PAGE'
@@ -845,7 +1384,7 @@ function Read-CrashDoctorKernelDump32 {
             BugCheckParameter3 = $p3
             BugCheckParameter4 = $p4
         }
-        ParseCoverage = 'DUMP_HEADER32 core metadata only; physical memory pages are not yet traversed'
+        ParseCoverage = 'DUMP_HEADER32 core metadata and bugcheck analysis; physical memory pages are not yet traversed'
     }
 }
 
@@ -972,6 +1511,14 @@ function Get-CrashDoctorSystemCrashHistory {
                 Get-CrashDoctorProblemClassification -BugCheckCode $bugCheckCode -Parameters $params -FaultingModule $faultingModule -CandidateDrivers $stackDrivers
             }
 
+            $bugCheckAnalysis = if ($info.PSObject.Properties.Name -contains 'BugCheckAnalysis' -and $info.BugCheckAnalysis) {
+                $info.BugCheckAnalysis
+            } else {
+                Get-CrashDoctorBugCheckAnalysis -BugCheckCode $bugCheckCode -Parameters $params -FaultingModule $faultingModule -ExceptionAddress $exceptionAddressHex -Architecture $info.Architecture
+            }
+            $faultingCallStack = if ($info.PSObject.Properties.Name -contains 'FaultingCallStack') { $info.FaultingCallStack } else { $null }
+            $callStacks = if ($info.PSObject.Properties.Name -contains 'CallStacks') { @($info.CallStacks) } else { @() }
+
             $crashes.Add([pscustomobject][ordered]@{
                 Path                  = $file.FullName
                 FileName              = $file.Name
@@ -986,6 +1533,9 @@ function Get-CrashDoctorSystemCrashHistory {
                 FaultingModule        = $faultingModule
                 ExceptionAddress      = $exceptionAddressHex
                 ProblemClassification = $classification
+                BugCheckAnalysis      = $bugCheckAnalysis
+                FaultingCallStack     = $faultingCallStack
+                CallStacks            = $callStacks
                 StackDrivers          = @($stackDrivers)
                 Valid                 = $true
                 Error                 = $null
@@ -1006,6 +1556,9 @@ function Get-CrashDoctorSystemCrashHistory {
                 FaultingModule        = $null
                 ExceptionAddress      = $null
                 ProblemClassification = $null
+                BugCheckAnalysis      = $null
+                FaultingCallStack     = $null
+                CallStacks            = @()
                 StackDrivers          = @()
                 Valid                 = $false
                 Error                 = $_.Exception.Message
@@ -1071,18 +1624,49 @@ function ConvertTo-CrashDoctorCrashHistoryMarkdown {
         if ($c.BugCheckParameters -and $c.BugCheckParameters.Count -gt 0) {
             $lines.Add("- **Parameters:** $($c.BugCheckParameters -join ', ')")
         }
+        if ($c.BugCheckAnalysis) {
+            $bca = $c.BugCheckAnalysis
+            if ($bca.FailureBucket) {
+                $lines.Add(('- **Failure bucket ID:** `{0}`' -f $bca.FailureBucket))
+            }
+            if ($bca.Summary) {
+                $lines.Add("- **Analysis summary:** $($bca.Summary)")
+            }
+            if ($bca.Explanation) {
+                $lines.Add("- **Technical explanation:** $($bca.Explanation)")
+            }
+            if ($bca.Parameters -and $bca.Parameters.Count -gt 0) {
+                $lines.Add('')
+                $lines.Add('  | Parameter | Value | Meaning |')
+                $lines.Add('  |---|---|---|')
+                foreach ($p in $bca.Parameters) {
+                    $lines.Add(("  | P{0} ({1}) | `{2}` | {3} |" -f $p.Index, $p.Name, $p.RawHex, $p.Description))
+                }
+                $lines.Add('')
+            }
+        }
         if ($c.ProblemClassification) {
             $lines.Add("- **Problem family:** $($c.ProblemClassification.Family) (Confidence: $($c.ProblemClassification.Confidence))")
-            $lines.Add("- **Classification summary:** $($c.ProblemClassification.Summary)")
-            $lines.Add("- **Explanation:** $($c.ProblemClassification.Explanation)")
             $lines.Add("- **Recommended next step:** $($c.ProblemClassification.RecommendedAction)")
         }
         if ($c.FaultingModule) {
             $lines.Add(('- **Candidate faulting module:** `{0}`' -f $c.FaultingModule))
         }
+        if ($c.FaultingCallStack -and $c.FaultingCallStack.Frames -and $c.FaultingCallStack.Frames.Count -gt 0) {
+            $lines.Add('')
+            $lines.Add('- **Faulting call stack (unwound activation frames):**')
+            $lines.Add('')
+            $lines.Add('  | # | Module | Symbol / Offset | Return Address |')
+            $lines.Add('  |---|---|---|---|')
+            foreach ($fr in $c.FaultingCallStack.Frames) {
+                $ret = if ($fr.ReturnAddress) { ('`{0}`' -f $fr.ReturnAddress) } else { '—' }
+                $lines.Add(("  | {0} | `{1}` | `{2}` | {3} |" -f $fr.FrameNumber, $fr.ModuleName, $fr.Symbol, $ret))
+            }
+            $lines.Add('')
+        }
         if ($c.StackDrivers -and $c.StackDrivers.Count -gt 0) {
             $driverNames = ($c.StackDrivers | Select-Object -ExpandProperty Name -Unique) -join ', '
-            $lines.Add("- **Drivers active on crash stack:** $driverNames")
+            $lines.Add("- **Candidate stack-involved drivers (raw memory scan):** $driverNames")
         }
         if ($c.ExceptionAddress) {
             $lines.Add(('- **Exception address:** `{0}`' -f $c.ExceptionAddress))
@@ -1093,8 +1677,8 @@ function ConvertTo-CrashDoctorCrashHistoryMarkdown {
         $lines.Add('')
     }
 
-    $lines.Add('> Note: A driver identified in a crash stack is an active participant or victim at the moment of the crash; it is not automatically the sole root cause. Use bugcheck parameters and system event context for confirmation.')
+    $lines.Add('> Note: Candidate stack-involved drivers reflect raw stack memory references and are kept separate from true unwound call stacks.')
     return ($lines -join [Environment]::NewLine)
 }
 
-Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule, Get-CrashDoctorProblemClassification, Get-CrashDoctorStackCandidateDrivers, Read-CrashDoctorMiniDumpThreads
+Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule, Get-CrashDoctorProblemClassification, Get-CrashDoctorStackCandidateDrivers, Read-CrashDoctorMiniDumpThreads, Get-CrashDoctorBugCheckAnalysis, Read-CrashDoctorCallStack, Get-CrashDoctorThreadCallStacks, Get-CrashDoctorSymbolConfig, Set-CrashDoctorSymbolConfig, Get-CrashDoctorModulePdbInfo, Find-CrashDoctorSymbol

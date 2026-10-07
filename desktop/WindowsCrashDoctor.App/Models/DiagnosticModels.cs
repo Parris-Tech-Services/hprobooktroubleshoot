@@ -231,9 +231,58 @@ public sealed class CrashHistoryRecord
     public string? FaultingModule { get; set; }
     public string? ExceptionAddress { get; set; }
     public ProblemClassificationRecord? ProblemClassification { get; set; }
+    public BugCheckAnalysisRecord? BugCheckAnalysis { get; set; }
+    public CallStackRecord? FaultingCallStack { get; set; }
+    public List<CallStackRecord> CallStacks { get; set; } = new();
     public List<StackDriverRecord> StackDrivers { get; set; } = new();
     public bool Valid { get; set; }
     public string? Error { get; set; }
+}
+
+public sealed class BugCheckAnalysisRecord
+{
+    public string? FailureBucket { get; set; }
+    public uint BugCheckCode { get; set; }
+    public string? BugCheckHex { get; set; }
+    public string? BugCheckName { get; set; }
+    public string ProblemFamily { get; set; } = "Unknown";
+    public string Summary { get; set; } = "";
+    public string Explanation { get; set; } = "";
+    public string RecommendedAction { get; set; } = "";
+    public string? FaultingModule { get; set; }
+    public string? ExceptionAddress { get; set; }
+    public List<BugCheckParameterDetail> Parameters { get; set; } = new();
+}
+
+public sealed class BugCheckParameterDetail
+{
+    public int Index { get; set; }
+    public string RawHex { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+}
+
+public sealed class CallStackRecord
+{
+    public uint ThreadId { get; set; }
+    public bool IsFaultingThread { get; set; }
+    public int Rank { get; set; }
+    public string Tag { get; set; } = "";
+    public int FrameCount { get; set; }
+    public string TopFrame { get; set; } = "";
+    public List<StackFrameRecord> Frames { get; set; } = new();
+}
+
+public sealed class StackFrameRecord
+{
+    public int FrameNumber { get; set; }
+    public string InstructionPointer { get; set; } = "";
+    public string? StackPointer { get; set; }
+    public string? FramePointer { get; set; }
+    public string ModuleName { get; set; } = "";
+    public string? Offset { get; set; }
+    public string Symbol { get; set; } = "";
+    public string? ReturnAddress { get; set; }
 }
 
 public sealed class ProblemClassificationRecord

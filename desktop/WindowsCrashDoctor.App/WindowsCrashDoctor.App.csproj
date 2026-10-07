@@ -45,5 +45,6 @@
     <EmbeddedResource Include="../../windows-crash-doctor/version.json" LogicalName="WCD.Engine.windows-crash-doctor.version.json" />
     <EmbeddedResource Include="../../windows-crash-doctor/integrations/catalog.json" LogicalName="WCD.Engine.windows-crash-doctor.integrations.catalog.json" />
     <EmbeddedResource Include="../../windows-crash-doctor/WerDoctor.psm1" LogicalName="WCD.Engine.windows-crash-doctor.WerDoctor.psm1" />
+    <EmbeddedResource Include="../../windows-crash-doctor/SymbolServer.psm1" LogicalName="WCD.Engine.windows-crash-doctor.SymbolServer.psm1" />
   </ItemGroup>
 </Project>
