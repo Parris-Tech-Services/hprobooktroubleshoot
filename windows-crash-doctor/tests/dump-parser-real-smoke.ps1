@@ -69,7 +69,8 @@ try {
 
     Assert-True ((Get-Item -LiteralPath $dumpPath).Length -gt 32) 'DbgHelp minidump should be non-empty'
 
-    $report = Get-CrashDoctorDumpInfo -Path $dumpPath
+    $symbolCache = Join-Path $temp 'Symbols'
+    $report = Get-CrashDoctorDumpInfo -Path $dumpPath -UseDebugger -SymbolCachePath $symbolCache -DebuggerTimeoutSeconds 180
     Assert-True ($report.Format -eq 'MiniDump') 'real DbgHelp file should be detected as a minidump'
     Assert-True ($report.Header.NumberOfStreams -gt 0) 'real minidump should contain streams'
     Assert-True (-not [string]::IsNullOrWhiteSpace($report.Architecture)) 'real minidump should expose processor architecture'
@@ -79,18 +80,21 @@ try {
     Assert-True (@($report.Streams | Where-Object Name -eq 'ModuleListStream').Count -eq 1) 'real minidump should contain ModuleListStream'
     Assert-True (@($report.Streams | Where-Object Name -eq 'ThreadListStream').Count -eq 1) 'real minidump should contain ThreadListStream'
 
-    # WCD-004 & WCD-005: Call stack unwinding on real Windows minidump
-    Assert-True ($report.CallStacks.Count -gt 0) 'real minidump should yield per-thread call stacks'
-    $hasUnwoundFrames = $false
-    foreach ($cs in $report.CallStacks) {
-        if ($cs.Frames -and $cs.Frames.Count -gt 0) {
-            $hasUnwoundFrames = $true
-            break
-        }
-    }
-    Assert-True $hasUnwoundFrames 'at least one thread in real minidump should have unwound activation frames'
+    # WCD-005 acceptance: genuine user-mode unwind through Microsoft's cdb/DbgEng engine.
+    Assert-True ($null -ne $report.DebuggerAnalysis) 'debugger analysis should be attached when -UseDebugger is requested'
+    Assert-True $report.DebuggerAnalysis.Available 'cdb.exe must be available on the Windows acceptance runner'
+    Assert-True $report.DebuggerAnalysis.Success 'cdb/DbgEng analysis must complete successfully'
+    Assert-True $report.DebuggerAnalysis.IsTrueUnwind 'debugger analysis must explicitly identify true unwind output'
+    Assert-True ($report.CallStackMethod -eq 'Cdb/DbgEng') 'call stack method must identify cdb/DbgEng'
+    Assert-True $report.TrueUnwindAvailable 'true unwind availability flag must be true'
+    Assert-True ($report.CallStacks.Count -gt 0) 'real minidump should yield debugger-unwound per-thread call stacks'
+    $unwoundFrames = @($report.CallStacks | ForEach-Object { @($_.Frames) })
+    Assert-True ($unwoundFrames.Count -gt 0) 'at least one debugger-unwound frame must be present'
+    Assert-True (@($unwoundFrames | Where-Object { $_.IsTrueUnwind }).Count -gt 0) 'frames must be marked as debugger-derived true unwind output'
+    Assert-True ($report.DebuggerAnalysis.RawOutput -match '===WCD_STACKS_BEGIN===') 'raw independent debugger trace marker must be retained'
 
-    # WCD-002: Module PDB RSDS information extraction
+    # WCD-002: Module PDB RSDS information extraction plus actual Microsoft symbol consumption.
+
     $pdbMods = @($report.Modules | Where-Object { $null -ne $_.PdbInfo })
     Assert-True ($pdbMods.Count -gt 0) 'real minidump loaded modules should contain CodeView RSDS PDB info'
     Assert-True ($pdbMods[0].PdbInfo.SymbolKey -match '^[^\/]+\.pdb\/[0-9A-F]+[0-9A-Fa-f]*\/[^\/]+\.pdb$') 'PDB SymbolKey matches standard Microsoft symbol path pattern'
