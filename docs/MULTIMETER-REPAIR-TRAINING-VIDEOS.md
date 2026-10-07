@@ -8,7 +8,7 @@
 
 ## Curated English-language learning path
 
-The language-evidence standard here is **not** 'English title means English spoken'. Five Electronics Repair School tutorials below have third-party catalogue listings specifying English; Defpom's course listing explicitly says **spoken in English**. English text captions are visible on the LED Projects lesson in Josh's screenshot. The two UK repair-channel tutorials appear to be in English, but their individual audio tracks were not directly listened to; they are marked accordingly.
+The language-evidence standard here is **not** 'English title means English spoken'. Four Electronics Repair School tutorials below have third-party catalogue listings specifying English; Defpom's course listing explicitly says **spoken in English**. English text captions are visible on the LED Projects lesson in Josh's screenshot. The two UK repair-channel tutorials appear to be in English, but their individual audio tracks were not directly listened to; they are marked accordingly.
 
 | Stage | Video | Language evidence | Why watch |
 |---|---|---|---|
