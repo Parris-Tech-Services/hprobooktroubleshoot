@@ -83,8 +83,165 @@ function ConvertFrom-CrashDoctorCdbOutput {
             continue
         }
 
-        if ($null -ne $currentStack -and $line -match '^\s*(?<frame>[0-9A-Fa-f]{1,3})\s+(?<sp>[0-9A-Fa-f`]{8,20})\s+(?<ret>[0-9A-Fa-f`]{8,20})\s+(?<site>.+?)\s*$') {
-            $site = $Matches['site'].Trim()
+        if ($null -ne $currentStack -and $line -match '^\s*(?<frame>[0-9A-Fa-f]{1,3})\s+(?<sp>[0-9A-Fa-f`]{8,20})\s+(?<ret>[0-9A-Fa-f`]{8,20})\s+(?<site>.+?)\s*
+            $currentStack.Frames.Add([pscustomobject][ordered]@{
+                FrameNumber        = $frameNumber
+                InstructionPointer = $null
+                StackPointer       = $sp
+                FramePointer       = $null
+                ModuleName         = $frameModule
+                Offset             = $null
+                Symbol             = $site
+                ReturnAddress      = $ret
+                SymbolSource       = 'DbgEng'
+                IsTrueUnwind       = $true
+            })
+        }
+    }
+
+    foreach ($stack in $threadStacks) {
+        $stack.FrameCount = $stack.Frames.Count
+        if ($stack.FrameCount -gt 0) {
+            $stack.TopFrame = [string]$stack.Frames[0].Symbol
+        }
+        $stack.Frames = @($stack.Frames)
+    }
+
+    return [pscustomobject][ordered]@{
+        FailureBucket = $failureBucket
+        SymbolName    = $symbolName
+        ModuleName    = $moduleName
+        ImageName     = $imageName
+        ExceptionCode = $exceptionCode
+        CallStacks    = @($threadStacks | Sort-Object Rank, ThreadIndex)
+    }
+}
+
+function Invoke-CrashDoctorDebuggerAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$DumpPath,
+        [string]$CdbPath,
+        [string]$SymbolCachePath,
+        [string]$SymbolServerUrl = 'https://msdl.microsoft.com/download/symbols',
+        [int]$TimeoutSeconds = 180
+    )
+
+    if (-not (Test-Path -LiteralPath $DumpPath -PathType Leaf)) {
+        throw "Dump file does not exist: $DumpPath"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($CdbPath)) {
+        $CdbPath = Get-CrashDoctorCdbPath
+    }
+    if ([string]::IsNullOrWhiteSpace($CdbPath) -or -not (Test-Path -LiteralPath $CdbPath -PathType Leaf)) {
+        return [pscustomobject][ordered]@{
+            Available       = $false
+            Success         = $false
+            Engine          = 'cdb/DbgEng'
+            IsTrueUnwind    = $false
+            SymbolsResolved = $false
+            CdbPath         = $null
+            SymbolPath      = $null
+            FailureBucket   = $null
+            SymbolName      = $null
+            ModuleName      = $null
+            ImageName       = $null
+            ExceptionCode   = $null
+            CallStacks      = @()
+            RawOutput       = ''
+            Error           = 'cdb.exe (Windows Debugging Tools) is not installed.'
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($SymbolCachePath)) {
+        $SymbolCachePath = if ($env:LOCALAPPDATA) {
+            Join-Path $env:LOCALAPPDATA 'WindowsDoctor\Symbols'
+        } else {
+            Join-Path ([IO.Path]::GetTempPath()) 'WindowsDoctorSymbols'
+        }
+    }
+    New-Item -ItemType Directory -Path $SymbolCachePath -Force | Out-Null
+
+    $resolvedDump = (Resolve-Path -LiteralPath $DumpPath).Path
+    $resolvedCdb = (Resolve-Path -LiteralPath $CdbPath).Path
+    $server = $SymbolServerUrl.Trim().TrimEnd('/')
+    $symbolPath = "srv*$SymbolCachePath*$server"
+
+    $stdoutPath = Join-Path ([IO.Path]::GetTempPath()) ('WcdCdb-' + [guid]::NewGuid().ToString('N') + '.out.txt')
+    $stderrPath = Join-Path ([IO.Path]::GetTempPath()) ('WcdCdb-' + [guid]::NewGuid().ToString('N') + '.err.txt')
+    $commands = '.echo ===WCD_ANALYZE_BEGIN===; .reload /f ntdll.dll; !analyze -v; .echo ===WCD_STACKS_BEGIN===; ~* kpn; .echo ===WCD_END===; q'
+
+    try {
+        $args = @(
+            '-z', ('"' + $resolvedDump + '"'),
+            '-y', ('"' + $symbolPath + '"'),
+            '-c', ('"' + $commands + '"')
+        )
+        $process = Start-Process -FilePath $resolvedCdb -ArgumentList $args -PassThru -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            try { & taskkill.exe /PID $process.Id /T /F | Out-Null } catch { }
+            return [pscustomobject][ordered]@{
+                Available       = $true
+                Success         = $false
+                Engine          = 'cdb/DbgEng'
+                IsTrueUnwind    = $false
+                SymbolsResolved = $false
+                CdbPath         = $resolvedCdb
+                SymbolPath      = $symbolPath
+                FailureBucket   = $null
+                SymbolName      = $null
+                ModuleName      = $null
+                ImageName       = $null
+                ExceptionCode   = $null
+                CallStacks      = @()
+                RawOutput       = if (Test-Path $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
+                Error           = "cdb analysis exceeded $TimeoutSeconds seconds."
+            }
+        }
+
+        $stdout = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
+        $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw } else { '' }
+        $combined = ($stdout + [Environment]::NewLine + $stderr).Trim()
+        $parsed = ConvertFrom-CrashDoctorCdbOutput -Output $combined
+        $stacks = @($parsed.CallStacks)
+        $allFrames = @($stacks | ForEach-Object { @($_.Frames) })
+        $symbolizedFrames = @($allFrames | Where-Object { $_.Symbol -match '^[^\s!]+![^\s]+' })
+
+        $success = ($combined -match '===WCD_STACKS_BEGIN===') -and ($stacks.Count -gt 0) -and ($allFrames.Count -gt 0)
+        return [pscustomobject][ordered]@{
+            Available       = $true
+            Success         = [bool]$success
+            Engine          = 'cdb/DbgEng'
+            IsTrueUnwind    = [bool]$success
+            SymbolsResolved = [bool]($symbolizedFrames.Count -gt 0)
+            CdbPath         = $resolvedCdb
+            SymbolPath      = $symbolPath
+            FailureBucket   = $parsed.FailureBucket
+            SymbolName      = $parsed.SymbolName
+            ModuleName      = $parsed.ModuleName
+            ImageName       = $parsed.ImageName
+            ExceptionCode   = $parsed.ExceptionCode
+            CallStacks      = $stacks
+            RawOutput       = $combined
+            Error           = if ($success) { $null } else { "cdb completed with exit code $($process.ExitCode) but no parseable debugger stack was produced." }
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Export-ModuleMember -Function Get-CrashDoctorCdbPath, ConvertFrom-CrashDoctorCdbOutput, Invoke-CrashDoctorDebuggerAnalysis
+) {
+            # Copy frame captures before any subsequent -match operation overwrites PowerShell's automatic $Matches table.
+            $frameToken = [string]$Matches['frame']
+            $spToken = [string]$Matches['sp']
+            $retToken = [string]$Matches['ret']
+            $site = [string]$Matches['site']
+            $site = $site.Trim()
+
             if ($site -match '^(?<module>[^!\s]+)!(?<name>\S+)') {
                 $frameModule = $Matches['module']
             } elseif ($site -match '^(?<module>[A-Za-z0-9_.-]+)\+0x[0-9A-Fa-f]+') {
@@ -93,9 +250,9 @@ function ConvertFrom-CrashDoctorCdbOutput {
                 $frameModule = 'Unknown'
             }
 
-            $frameNumber = [Convert]::ToInt32($Matches['frame'], 16)
-            $sp = '0x' + ($Matches['sp'] -replace '`','').ToUpperInvariant()
-            $ret = '0x' + ($Matches['ret'] -replace '`','').ToUpperInvariant()
+            $frameNumber = [Convert]::ToInt32($frameToken, 16)
+            $sp = '0x' + ($spToken -replace '`','').ToUpperInvariant()
+            $ret = '0x' + ($retToken -replace '`','').ToUpperInvariant()
             $currentStack.Frames.Add([pscustomobject][ordered]@{
                 FrameNumber        = $frameNumber
                 InstructionPointer = $null
