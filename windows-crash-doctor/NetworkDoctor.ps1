@@ -564,8 +564,9 @@ $checks.Add((New-Check 'HTTPS IPv4' $https4Status "IPv4 HTTPS success: $($https4
 $checks.Add((New-Check 'HTTPS IPv6' 'INFO' "IPv6 HTTPS success: $($https6.success); status: $($https6.statusCode)"))
 
 $tcp443 = $false
+$tcp443Target = 'github.com'
 try {
-    $tcp443 = [bool](Test-NetConnection -ComputerName 'github.com' -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue)
+    $tcp443 = [bool](Test-NetConnection -ComputerName $tcp443Target -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue)
 }
 catch {
     $tcp443 = $false
