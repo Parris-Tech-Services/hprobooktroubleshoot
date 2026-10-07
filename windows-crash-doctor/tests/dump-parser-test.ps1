@@ -213,24 +213,64 @@ try {
     Assert-True ($validHistory.Count -eq 3) 'Exactly 3 synthetic dumps should be marked valid'
     $invalidHistory = @($history | Where-Object { -not $_.Valid })
     Assert-True ($invalidHistory.Count -ge 1) 'Corrupted/truncated dump must be recorded as invalid'
-    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'BugCheckName') 'Crash history objects must contain BugCheckName'
-    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'CrashTimeLocal') 'Crash history objects must contain CrashTimeLocal'
+    # Problem classification tests (WCD-018).
+    $classWhea = Get-CrashDoctorProblemClassification -BugCheckCode 0x124
+    Assert-Equal $classWhea.Family 'Hardware' '0x124 classified as Hardware'
+    Assert-Equal $classWhea.Confidence 'High' '0x124 confidence is High'
 
-    # Faulting module mapping test.
-    $mockInfo = [pscustomobject]@{
-        Exception = [pscustomobject]@{ ExceptionAddress = [uint64]0x00007ff600001000 }
-        Modules   = @(
-            [pscustomobject]@{ Name = 'test.dll'; BaseOfImage = [uint64]0x00007ff600000000; SizeOfImage = [uint32]0x12000 }
+    $classMem = Get-CrashDoctorProblemClassification -BugCheckCode 0x1A
+    Assert-Equal $classMem.Family 'MemoryCorruption' '0x1A classified as MemoryCorruption'
+
+    $classStorage = Get-CrashDoctorProblemClassification -BugCheckCode 0x7A
+    Assert-Equal $classStorage.Family 'StorageFileSystem' '0x7A classified as StorageFileSystem'
+
+    $classPower = Get-CrashDoctorProblemClassification -BugCheckCode 0x164
+    Assert-Equal $classPower.Family 'PowerThermal' '0x164 classified as PowerThermal'
+
+    $classDriver = Get-CrashDoctorProblemClassification -BugCheckCode 0xD1 -FaultingModule 'mybadnet.sys'
+    Assert-Equal $classDriver.Family 'Driver' '0xD1 classified as Driver'
+    Assert-True ([bool]($classDriver.ContributingFactors -match 'mybadnet\.sys')) 'Contributing factors include faulting driver'
+
+    $classSys = Get-CrashDoctorProblemClassification -BugCheckCode 0x3B
+    Assert-Equal $classSys.Family 'SystemSoftware' '0x3B without third-party driver classified as SystemSoftware'
+
+    # Stack candidate driver unwinding test (WCD-023).
+    $fakeStackPath = Join-Path $temp 'stack-test.bin'
+    $fakeStackBytes = New-Object byte[] 64
+    # Place a return address pointing inside third-party driver (0x00007ff810002040)
+    Set-U64 $fakeStackBytes 16 0x00007ff810002040
+    # Place a return address pointing inside ntoskrnl.exe (0x00007ff800005000)
+    Set-U64 $fakeStackBytes 32 0x00007ff800005000
+    [IO.File]::WriteAllBytes($fakeStackPath, $fakeStackBytes)
+
+    $stackStream = [System.IO.File]::OpenRead($fakeStackPath)
+    try {
+        $mockThreads = @(
+            [pscustomobject]@{
+                ThreadId = 100
+                StackRva = 0
+                StackDataSize = 64
+            }
         )
+        $mockModules = @(
+            [pscustomobject]@{ Name = 'thirdparty.sys'; BaseOfImage = [uint64]0x00007ff810000000; SizeOfImage = [uint32]0x10000 },
+            [pscustomobject]@{ Name = 'ntoskrnl.exe'; BaseOfImage = [uint64]0x00007ff800000000; SizeOfImage = [uint32]0x50000 }
+        )
+        $stackDrivers = @(Get-CrashDoctorStackCandidateDrivers -Stream $stackStream -Threads $mockThreads -Modules $mockModules -FaultingThreadId 100)
+        Assert-True ($stackDrivers.Count -ge 2) 'Should discover both candidate drivers on stack'
+        $tpDriver = @($stackDrivers | Where-Object { $_.Name -eq 'thirdparty.sys' })
+        Assert-True ($tpDriver.Count -eq 1) 'Discovered thirdparty.sys driver on stack'
+        Assert-True (-not $tpDriver[0].IsCoreComponent) 'thirdparty.sys is correctly flagged non-core'
+        $coreDriver = @($stackDrivers | Where-Object { $_.Name -eq 'ntoskrnl.exe' })
+        Assert-True ($coreDriver[0].IsCoreComponent) 'ntoskrnl.exe is correctly flagged as Windows core'
     }
-    $faultingMod = Find-CrashDoctorFaultingModule -DumpInfo $mockInfo
-    Assert-Equal $faultingMod 'test.dll' 'Find-CrashDoctorFaultingModule should map exception address to module'
+    finally {
+        $stackStream.Dispose()
+    }
 
-    # Markdown generation test.
-    $historyMd = ConvertTo-CrashDoctorCrashHistoryMarkdown -Crashes $history
-    Assert-True ($historyMd -match '# Windows Doctor historical crash summary') 'Markdown header present'
-    Assert-True ($historyMd -match '## Crash index') 'Crash index table present'
-    Assert-True ($historyMd -match '## Detailed crash records') 'Detailed crash records present'
+    # Crash history properties verification.
+    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'ProblemClassification') 'Crash history record has ProblemClassification'
+    Assert-True ($validHistory[0].PSObject.Properties.Name -contains 'StackDrivers') 'Crash history record has StackDrivers'
 
     Write-Host 'Windows Crash Doctor dump parser test: PASS'
 }

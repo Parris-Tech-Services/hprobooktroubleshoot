@@ -341,6 +341,319 @@ function Read-CrashDoctorMiniDumpMemoryInfoSummary {
     }
 }
 
+function Read-CrashDoctorMiniDumpThreads {
+    param([System.IO.FileStream]$Stream, $Directory)
+    if ($Directory.DataSize -lt 4) { return ,@() }
+    $countBytes = Read-CrashDoctorBytes -Stream $Stream -Offset $Directory.Rva -Count 4
+    $count = [int](Get-CrashDoctorUInt32 -Bytes $countBytes -Offset 0)
+    if ($count -gt 2048) { throw "Unreasonable MINIDUMP_THREAD count: $count" }
+    $entrySize = 48
+    $available = [Math]::Floor(([int64]$Directory.DataSize - 4) / $entrySize)
+    if ($available -lt 1) { return ,@() }
+    $readCount = [Math]::Min($count, [int]$available)
+
+    $threads = New-Object System.Collections.Generic.List[object]
+    for ($i = 0; $i -lt $readCount; $i++) {
+        $offset = [int64]$Directory.Rva + 4 + ($i * $entrySize)
+        $bytes = Read-CrashDoctorBytes -Stream $Stream -Offset $offset -Count $entrySize
+        $threads.Add([pscustomobject][ordered]@{
+            ThreadId        = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 0
+            SuspendCount    = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 4
+            PriorityClass   = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 8
+            Priority        = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 12
+            Teb             = Get-CrashDoctorUInt64 -Bytes $bytes -Offset 16
+            StackMemoryBase = Get-CrashDoctorUInt64 -Bytes $bytes -Offset 24
+            StackDataSize   = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 32
+            StackRva        = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 36
+            ContextDataSize = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 40
+            ContextRva      = Get-CrashDoctorUInt32 -Bytes $bytes -Offset 44
+        })
+    }
+    return $threads.ToArray()
+}
+
+function Get-CrashDoctorStackCandidateDrivers {
+    [CmdletBinding()]
+    param(
+        [System.IO.FileStream]$Stream,
+        [object[]]$Threads,
+        [object[]]$Modules,
+        [uint32]$FaultingThreadId = 0,
+        [string]$Architecture = 'x64'
+    )
+
+    if ($null -eq $Stream -or $null -eq $Modules -or $Modules.Count -eq 0) { return @() }
+
+    $targetThreads = @()
+    if ($Threads -and $Threads.Count -gt 0) {
+        if ($FaultingThreadId -ne 0) {
+            $matching = @($Threads | Where-Object { $_.ThreadId -eq $FaultingThreadId })
+            if ($matching.Count -gt 0) { $targetThreads = $matching }
+            else { $targetThreads = $Threads }
+        } else {
+            $targetThreads = $Threads
+        }
+    }
+
+    $ptrSize = if ($Architecture -eq 'x86') { 4 } else { 8 }
+    $foundDrivers = New-Object System.Collections.Generic.List[object]
+    $seenModules = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($thread in $targetThreads) {
+        $rva = [int64]$thread.StackRva
+        $size = [int]$thread.StackDataSize
+        if ($rva -lt 0 -or $size -le 0 -or ($rva + $size) -gt $Stream.Length) { continue }
+        if ($size -gt 2097152) { $size = 2097152 }
+
+        $stackBytes = Read-CrashDoctorBytes -Stream $Stream -Offset $rva -Count $size
+        $maxOffset = $size - $ptrSize
+        for ($pos = 0; $pos -le $maxOffset; $pos += $ptrSize) {
+            $addr = if ($ptrSize -eq 8) {
+                Get-CrashDoctorUInt64 -Bytes $stackBytes -Offset $pos
+            } else {
+                [uint64](Get-CrashDoctorUInt32 -Bytes $stackBytes -Offset $pos)
+            }
+
+            if ($addr -eq 0) { continue }
+
+            foreach ($m in $Modules) {
+                $base = [uint64]$m.BaseOfImage
+                $modSize = [uint64]$m.SizeOfImage
+                if ($addr -ge $base -and $addr -lt ($base + $modSize)) {
+                    $modName = [System.IO.Path]::GetFileName([string]$m.Name)
+                    if ([string]::IsNullOrWhiteSpace($modName)) { $modName = [string]$m.Name }
+                    if ($seenModules.Add($modName)) {
+                        $offsetHex = '0x{0:X}' -f ($addr - $base)
+                        $isCore = $modName -match '(?i)^(ntoskrnl|hal|fltmgr|ntfs|ndis|tcpip|ci|win32k|win32kbase|win32kfull|storport|dump_storport)\.(sys|exe|dll)$'
+                        $foundDrivers.Add([pscustomobject][ordered]@{
+                            Name            = $modName
+                            FullPath        = $m.Name
+                            BaseAddress     = ('0x{0:X16}' -f $base)
+                            StackAddress    = ('0x{0:X16}' -f $addr)
+                            Offset          = $offsetHex
+                            ThreadId        = $thread.ThreadId
+                            IsCoreComponent = $isCore
+                        })
+                    }
+                    break
+                }
+            }
+        }
+    }
+
+    return $foundDrivers.ToArray()
+}
+
+function Get-CrashDoctorProblemClassification {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] $BugCheckCode,
+        [uint64[]] $Parameters = @(),
+        [string] $FaultingModule = $null,
+        [object[]] $CandidateDrivers = @()
+    )
+
+    $u = [uint32]0
+    if ($BugCheckCode -is [string]) {
+        $clean = $BugCheckCode.Trim()
+        if ($clean.StartsWith('0x', [StringComparison]::OrdinalIgnoreCase)) {
+            $clean = $clean.Substring(2)
+        }
+        $parsed = [uint32]0
+        if ([uint32]::TryParse($clean, [Globalization.NumberStyles]::HexNumber, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+            $u = $parsed
+        }
+    }
+    elseif ($BugCheckCode -is [uint32]) {
+        $u = $BugCheckCode
+    }
+    else {
+        $bytes = [BitConverter]::GetBytes([int64]$BugCheckCode)
+        $u = [BitConverter]::ToUInt32($bytes, 0)
+    }
+
+    $bugCheckHex = ('0x{0:X}' -f $u).ToUpperInvariant()
+    $bugCheckName = Get-CrashDoctorBugCheckName -Code $u
+    $contributing = New-Object System.Collections.Generic.List[string]
+    $contributing.Add("BugCheck: $bugCheckName ($bugCheckHex)")
+
+    if (-not [string]::IsNullOrWhiteSpace($FaultingModule)) {
+        $contributing.Add("Faulting module: $FaultingModule")
+    }
+
+    $thirdPartyDrivers = New-Object System.Collections.Generic.List[object]
+    if ($CandidateDrivers) {
+        foreach ($d in @($CandidateDrivers)) {
+            if ($null -eq $d) { continue }
+            $isCore = $false
+            if ($d -is [System.Management.Automation.PSObject]) {
+                if ($null -ne $d.PSObject.Properties['IsCoreComponent']) {
+                    $isCore = [bool]$d.IsCoreComponent
+                }
+                elseif ($null -ne $d.PSObject.Properties['Name']) {
+                    $isCore = [bool]($d.Name -match '(?i)^(ntoskrnl|hal|fltmgr|ntfs|ndis|tcpip|ci|win32k|win32kbase|win32kfull|storport|dump_storport)\.(sys|exe|dll)$')
+                }
+            }
+            if (-not $isCore) {
+                $thirdPartyDrivers.Add($d)
+            }
+        }
+    }
+
+    if ($thirdPartyDrivers.Count -gt 0) {
+        $driverNames = ($thirdPartyDrivers | Select-Object -ExpandProperty Name -Unique) -join ', '
+        $contributing.Add("Third-party stack drivers: $driverNames")
+    }
+
+    switch ($u) {
+        # Hardware / Platform
+        { $_ -in @(0x124, 0x9C, 0x101, 0x1CA) } {
+            $summary = switch ($u) {
+                0x124 { 'Hardware uncorrectable error (WHEA); processor, PCIe or memory bus error detected by hardware architecture.' }
+                0x9C  { 'Machine Check Exception (MCE); unrecoverable hardware exception reported by the CPU.' }
+                0x101 { 'Clock watchdog timeout; secondary processor core failed to service clock interrupts.' }
+                0x1CA { 'Synthetic watchdog timeout; operating system freeze detected by hypervisor or platform watchdog.' }
+            }
+            return [pscustomobject][ordered]@{
+                Family              = 'Hardware'
+                Confidence          = 'High'
+                Summary             = "Hardware / CPU / Platform defect ($bugCheckName)"
+                Explanation         = $summary
+                RecommendedAction   = 'Inspect system temperatures and voltages, update motherboard UEFI/BIOS firmware, check CPU cooler mounting, and inspect PCIe devices.'
+                ContributingFactors = $contributing.ToArray()
+            }
+        }
+
+        # Memory Corruption
+        { $_ -in @(0x1A, 0x4E, 0x12B, 0x109, 0x13A, 0xC2) } {
+            $summary = switch ($u) {
+                0x1A  { 'Memory Management corruption; corrupt page table entries or physical memory inconsistency.' }
+                0x4E  { 'Page Frame Number (PFN) list corrupt; physical memory tracking list corrupted.' }
+                0x12B { 'Faulty hardware corrupted page; hardware memory architecture detected single- or multi-bit physical memory error.' }
+                0x109 { 'Critical structure corruption; kernel code or critical structures corrupted by bad memory or malicious driver.' }
+                0x13A { 'Kernel mode heap corruption; memory pool corruption by kernel component.' }
+                0xC2  { 'Bad pool caller; invalid memory allocation or free requested by kernel caller.' }
+            }
+            $conf = if ($u -in @(0x1A, 0x4E, 0x12B)) { 'High' } else { 'Medium' }
+            return [pscustomobject][ordered]@{
+                Family              = 'MemoryCorruption'
+                Confidence          = $conf
+                Summary             = "Memory / Physical RAM corruption ($bugCheckName)"
+                Explanation         = $summary
+                RecommendedAction   = 'Run Windows Memory Diagnostic (mdsched.exe) or MemTest86, verify RAM XMP/EXPO timings, and test individual memory modules.'
+                ContributingFactors = $contributing.ToArray()
+            }
+        }
+
+        # Storage / File System
+        { $_ -in @(0x24, 0x77, 0x7A, 0xED, 0x154) } {
+            $summary = switch ($u) {
+                0x24  { 'NTFS file system driver failure or disk metadata corruption.' }
+                0x77  { 'Kernel stack inpage error; requested kernel stack data could not be read from disk paging file.' }
+                0x7A  { 'Kernel data inpage error; paging file data read failure, frequently caused by bad sectors or storage controller timeout.' }
+                0xED  { 'Unmountable boot volume; file system or storage failure during boot volume initialization.' }
+                0x154 { 'Unexpected store exception; memory store manager failed to read from storage volume.' }
+            }
+            return [pscustomobject][ordered]@{
+                Family              = 'StorageFileSystem'
+                Confidence          = 'High'
+                Summary             = "Storage / File system / Pagefile failure ($bugCheckName)"
+                Explanation         = $summary
+                RecommendedAction   = 'Run chkdsk /f /r, inspect NVMe/SATA SMART health indicators, verify cable/drive connections, and update storage controller firmware.'
+                ContributingFactors = $contributing.ToArray()
+            }
+        }
+
+        # Power / Thermal
+        { $_ -in @(0x164) } {
+            return [pscustomobject][ordered]@{
+                Family              = 'PowerThermal'
+                Confidence          = 'High'
+                Summary             = "Power / Thermal management failure ($bugCheckName)"
+                Explanation         = 'Internal power transition failure; power management driver failed to execute state transition.'
+                RecommendedAction   = 'Update chipset and ACPI drivers, check battery/power supply health, and disable Fast Startup to test stability.'
+                ContributingFactors = $contributing.ToArray()
+            }
+        }
+
+        # Driver / Third-Party Kernel Module
+        { $_ -in @(0x9F, 0xC4, 0xC5, 0xCE, 0xD1, 0xF7, 0x116, 0x117, 0x119, 0x133, 0x139, 0x144, 0x192, 0x1D5) } {
+            $driverNote = if ($FaultingModule) { "Faulting driver candidate: $FaultingModule." } else { 'Kernel driver faulted during execution.' }
+            $summary = switch ($u) {
+                0x9F  { "Driver power state failure; driver failed to complete power IRP in required timeframe. $driverNote" }
+                0xD1  { "Driver IRQL not less or equal; driver accessed pageable memory at raised interrupt request level (IRQL). $driverNote" }
+                0x116 { "Video TDR failure; graphics driver failed to respond to display scheduler timeout. $driverNote" }
+                0x117 { "Video TDR timeout detected; display driver timeout. $driverNote" }
+                0x133 { "DPC watchdog violation; driver spent excessive cumulative time in Deferred Procedure Call (DPC) routine. $driverNote" }
+                0x139 { "Kernel security check failure; buffer overrun or list corruption detected by compiler guard. $driverNote" }
+                0x144 { "USB 3.0 controller driver bugcheck. $driverNote" }
+                0x1D5 { "Driver PnP watchdog timeout; driver stalled in Plug and Play handler. $driverNote" }
+                default { "Driver defect violation ($bugCheckName). $driverNote" }
+            }
+            return [pscustomobject][ordered]@{
+                Family              = 'Driver'
+                Confidence          = 'High'
+                Summary             = "Kernel driver fault ($bugCheckName)"
+                Explanation         = $summary
+                RecommendedAction   = if ($FaultingModule) { "Update, roll back, or reinstall the driver associated with $FaultingModule." } else { 'Update third-party device drivers and review recently installed drivers.' }
+                ContributingFactors = $contributing.ToArray()
+            }
+        }
+
+        # System Software / Subsystem
+        { $_ -in @(0x3B, 0x7E, 0x1E, 0x7F, 0xEF, 0xC0000005, 0xC00000FD) } {
+            $fam = if ($thirdPartyDrivers.Count -gt 0) { 'Driver' } else { 'SystemSoftware' }
+            $conf = if ($thirdPartyDrivers.Count -gt 0) { 'Medium' } else { 'Medium' }
+            $summary = switch ($u) {
+                0x3B  { 'System service exception; unhandled exception in kernel-mode system service.' }
+                0x7E  { 'System thread exception not handled; kernel worker thread encountered unhandled exception.' }
+                0x1E  { 'Kmode exception not handled; kernel code executed illegal or unhandled instruction.' }
+                0x7F  { 'Unexpected kernel mode trap; processor trap such as divide-by-zero or double fault.' }
+                0xEF  { 'Critical process died; essential Windows system process (csrss.exe, wininit.exe, etc.) was terminated.' }
+                0xC0000005 { 'Access violation exception; invalid pointer dereference or memory access.' }
+                0xC00000FD { 'Stack overflow exception; call recursion exhausted available thread stack.' }
+                default { "Kernel exception ($bugCheckName)." }
+            }
+            if ($thirdPartyDrivers.Count -gt 0) {
+                $summary += " Third-party driver(s) present on faulting stack: $(($thirdPartyDrivers | Select-Object -ExpandProperty Name -Unique) -join ', ')."
+            }
+            return [pscustomobject][ordered]@{
+                Family              = $fam
+                Confidence          = $conf
+                Summary             = if ($fam -eq 'Driver') { "Driver-involved exception ($bugCheckName)" } else { "System software exception ($bugCheckName)" }
+                Explanation         = $summary
+                RecommendedAction   = if ($fam -eq 'Driver') { 'Review and update third-party drivers identified on the crash stack; run DISM and SFC to verify system file integrity.' } else { 'Run sfc /scannow and DISM /Online /Cleanup-Image /RestoreHealth to verify operating system binaries.' }
+                ContributingFactors = $contributing.ToArray()
+            }
+        }
+
+        # Page fault in nonpaged area (0x50): can be memory or driver
+        0x50 {
+            $fam = if ($thirdPartyDrivers.Count -gt 0 -or ($FaultingModule -and $FaultingModule -match '(?i)\.sys$' -and $FaultingModule -notmatch '(?i)^(ntoskrnl|hal)\.sys$')) { 'Driver' } else { 'MemoryCorruption' }
+            return [pscustomobject][ordered]@{
+                Family              = $fam
+                Confidence          = 'Medium'
+                Summary             = if ($fam -eq 'Driver') { 'Driver invalid memory access (PAGE_FAULT_IN_NONPAGED_AREA)' } else { 'Memory fault (PAGE_FAULT_IN_NONPAGED_AREA)' }
+                Explanation         = 'Invalid system memory was referenced by the processor. This can be caused by a driver accessing unmapped or paged-out memory, or by physical RAM defects.'
+                RecommendedAction   = if ($fam -eq 'Driver') { 'Update or uninstall the faulting device driver, or run Windows Memory Diagnostic to eliminate RAM faults.' } else { 'Test physical RAM with Windows Memory Diagnostic or MemTest86.' }
+                ContributingFactors = $contributing.ToArray()
+            }
+        }
+
+        default {
+            $fam = if ($thirdPartyDrivers.Count -gt 0) { 'Driver' } elseif ($FaultingModule) { 'Driver' } else { 'Unknown' }
+            return [pscustomobject][ordered]@{
+                Family              = $fam
+                Confidence          = 'Low'
+                Summary             = if ($fam -eq 'Driver') { "Probable driver fault ($bugCheckName)" } else { "Unclassified crash ($bugCheckName)" }
+                Explanation         = "Bugcheck code $bugCheckHex ($bugCheckName) is not mapped to a specific automated heuristic."
+                RecommendedAction   = 'Inspect system event logs around the crash timestamp and cross-reference with device manager problem states.'
+                ContributingFactors = $contributing.ToArray()
+            }
+        }
+    }
+}
+
 function Read-CrashDoctorMiniDump {
     param([System.IO.FileStream]$Stream, [string]$ResolvedPath)
 
@@ -374,10 +687,19 @@ function Read-CrashDoctorMiniDump {
     $systemInfo = if ($byType.ContainsKey(7)) { Read-CrashDoctorMiniDumpSystemInfo -Stream $Stream -Directory $byType[7] } else { $null }
     $exception = if ($byType.ContainsKey(6)) { Read-CrashDoctorMiniDumpException -Stream $Stream -Directory $byType[6] } else { $null }
     $modules = if ($byType.ContainsKey(4)) { @(Read-CrashDoctorMiniDumpModules -Stream $Stream -Directory $byType[4]) } else { @() }
-    $threadCount = if ($byType.ContainsKey(3)) { Read-CrashDoctorMiniDumpCountStream -Stream $Stream -Directory $byType[3] } else { $null }
+    $threads = if ($byType.ContainsKey(3)) { @(Read-CrashDoctorMiniDumpThreads -Stream $Stream -Directory $byType[3]) } else { @() }
+    $threadCount = if ($null -ne $threads -and @($threads).Count -gt 0) { @($threads).Count } elseif ($byType.ContainsKey(3)) { Read-CrashDoctorMiniDumpCountStream -Stream $Stream -Directory $byType[3] } else { $null }
     $memoryRangeCount = if ($byType.ContainsKey(5)) { Read-CrashDoctorMiniDumpCountStream -Stream $Stream -Directory $byType[5] } else { $null }
     $memory64 = if ($byType.ContainsKey(9)) { Read-CrashDoctorMiniDumpMemory64Summary -Stream $Stream -Directory $byType[9] } else { $null }
     $memoryInfo = if ($byType.ContainsKey(16)) { Read-CrashDoctorMiniDumpMemoryInfoSummary -Stream $Stream -Directory $byType[16] } else { $null }
+
+    $faultingThreadId = if ($exception) { [uint32]$exception.ThreadId } else { [uint32]0 }
+    $dumpArch = if ($systemInfo) { $systemInfo.ProcessorArchitecture } else { 'x64' }
+    $stackDrivers = Get-CrashDoctorStackCandidateDrivers -Stream $Stream -Threads $threads -Modules $modules -FaultingThreadId $faultingThreadId -Architecture $dumpArch
+    $faultingModule = Find-CrashDoctorFaultingModule -DumpInfo ([pscustomobject]@{ Exception = $exception; Modules = $modules })
+    $exceptionCode = if ($exception) { [uint32]$exception.ExceptionCode } else { [uint32]0 }
+    $exceptionParams = if ($exception -and $exception.Parameters) { @($exception.Parameters) } else { @() }
+    $problemClassification = Get-CrashDoctorProblemClassification -BugCheckCode $exceptionCode -Parameters $exceptionParams -FaultingModule $faultingModule -CandidateDrivers $stackDrivers
 
     return [pscustomobject][ordered]@{
         SchemaVersion = '1.0'
@@ -396,14 +718,17 @@ function Read-CrashDoctorMiniDump {
         }
         SystemInfo = $systemInfo
         Exception = $exception
+        FaultingModule = $faultingModule
         ModuleCount = @($modules).Count
         Modules = @($modules)
         ThreadCount = $threadCount
+        StackDrivers = @($stackDrivers)
+        ProblemClassification = $problemClassification
         MemoryRangeCount = $memoryRangeCount
         Memory64 = $memory64
         MemoryInfo = $memoryInfo
         Streams = $directories.ToArray()
-        ParseCoverage = 'Header, stream directory, system info, exception, modules, thread count and memory summaries'
+        ParseCoverage = 'Header, stream directory, system info, exception, modules, thread stack drivers and memory summaries'
     }
 }
 
@@ -427,12 +752,22 @@ function Read-CrashDoctorKernelDump64 {
     if ($Stream.Length -lt 8192) { throw '64-bit kernel dump is smaller than the 8192-byte DUMP_HEADER64.' }
     $header = Read-CrashDoctorBytes -Stream $Stream -Offset 0 -Count 8192
     $dumpType = Get-CrashDoctorUInt32 -Bytes $header -Offset 3992
+    $bugCheckCode = Get-CrashDoctorUInt32 -Bytes $header -Offset 56
+    $p1 = Get-CrashDoctorUInt64 -Bytes $header -Offset 64
+    $p2 = Get-CrashDoctorUInt64 -Bytes $header -Offset 72
+    $p3 = Get-CrashDoctorUInt64 -Bytes $header -Offset 80
+    $p4 = Get-CrashDoctorUInt64 -Bytes $header -Offset 88
+    $params = @($p1, $p2, $p3, $p4)
+    $classification = Get-CrashDoctorProblemClassification -BugCheckCode $bugCheckCode -Parameters $params
+
     return [pscustomobject][ordered]@{
         SchemaVersion = '1.0'
         Path = $ResolvedPath
         FileSize = $Stream.Length
         Format = 'KernelCrashDump'
         Architecture = Get-CrashDoctorMachineName -MachineType (Get-CrashDoctorUInt32 -Bytes $header -Offset 48)
+        ProblemClassification = $classification
+        StackDrivers = @()
         Header = [pscustomobject][ordered]@{
             Signature = 'PAGE'
             ValidDump = 'DU64'
@@ -444,11 +779,11 @@ function Read-CrashDoctorKernelDump64 {
             PsActiveProcessHead = Get-CrashDoctorUInt64 -Bytes $header -Offset 40
             MachineImageType = Get-CrashDoctorUInt32 -Bytes $header -Offset 48
             NumberProcessors = Get-CrashDoctorUInt32 -Bytes $header -Offset 52
-            BugCheckCode = Get-CrashDoctorUInt32 -Bytes $header -Offset 56
-            BugCheckParameter1 = Get-CrashDoctorUInt64 -Bytes $header -Offset 64
-            BugCheckParameter2 = Get-CrashDoctorUInt64 -Bytes $header -Offset 72
-            BugCheckParameter3 = Get-CrashDoctorUInt64 -Bytes $header -Offset 80
-            BugCheckParameter4 = Get-CrashDoctorUInt64 -Bytes $header -Offset 88
+            BugCheckCode = $bugCheckCode
+            BugCheckParameter1 = $p1
+            BugCheckParameter2 = $p2
+            BugCheckParameter3 = $p3
+            BugCheckParameter4 = $p4
             KdDebuggerDataBlock = Get-CrashDoctorUInt64 -Bytes $header -Offset 128
             DumpType = $dumpType
             DumpTypeName = Get-CrashDoctorKernelDumpTypeName -DumpType $dumpType
@@ -469,12 +804,22 @@ function Read-CrashDoctorKernelDump32 {
     param([System.IO.FileStream]$Stream, [string]$ResolvedPath)
     if ($Stream.Length -lt 4096) { throw '32-bit kernel dump is smaller than a crash-dump header page.' }
     $header = Read-CrashDoctorBytes -Stream $Stream -Offset 0 -Count ([Math]::Min(4096, [int]$Stream.Length))
+    $bugCheckCode = Get-CrashDoctorUInt32 -Bytes $header -Offset 40
+    $p1 = Get-CrashDoctorUInt32 -Bytes $header -Offset 44
+    $p2 = Get-CrashDoctorUInt32 -Bytes $header -Offset 48
+    $p3 = Get-CrashDoctorUInt32 -Bytes $header -Offset 52
+    $p4 = Get-CrashDoctorUInt32 -Bytes $header -Offset 56
+    $params = @($p1, $p2, $p3, $p4)
+    $classification = Get-CrashDoctorProblemClassification -BugCheckCode $bugCheckCode -Parameters $params
+
     return [pscustomobject][ordered]@{
         SchemaVersion = '1.0'
         Path = $ResolvedPath
         FileSize = $Stream.Length
         Format = 'KernelCrashDump'
         Architecture = Get-CrashDoctorMachineName -MachineType (Get-CrashDoctorUInt32 -Bytes $header -Offset 32)
+        ProblemClassification = $classification
+        StackDrivers = @()
         Header = [pscustomobject][ordered]@{
             Signature = 'PAGE'
             ValidDump = 'DUMP'
@@ -486,11 +831,11 @@ function Read-CrashDoctorKernelDump32 {
             PsActiveProcessHead = Get-CrashDoctorUInt32 -Bytes $header -Offset 28
             MachineImageType = Get-CrashDoctorUInt32 -Bytes $header -Offset 32
             NumberProcessors = Get-CrashDoctorUInt32 -Bytes $header -Offset 36
-            BugCheckCode = Get-CrashDoctorUInt32 -Bytes $header -Offset 40
-            BugCheckParameter1 = Get-CrashDoctorUInt32 -Bytes $header -Offset 44
-            BugCheckParameter2 = Get-CrashDoctorUInt32 -Bytes $header -Offset 48
-            BugCheckParameter3 = Get-CrashDoctorUInt32 -Bytes $header -Offset 52
-            BugCheckParameter4 = Get-CrashDoctorUInt32 -Bytes $header -Offset 56
+            BugCheckCode = $bugCheckCode
+            BugCheckParameter1 = $p1
+            BugCheckParameter2 = $p2
+            BugCheckParameter3 = $p3
+            BugCheckParameter4 = $p4
         }
         ParseCoverage = 'DUMP_HEADER32 core metadata only; physical memory pages are not yet traversed'
     }
@@ -612,39 +957,50 @@ function Get-CrashDoctorSystemCrashHistory {
                 '0x{0:X16}' -f [uint64]$info.Exception.ExceptionAddress
             } else { $null }
 
+            $stackDrivers = if ($info.PSObject.Properties.Name -contains 'StackDrivers') { @($info.StackDrivers) } else { @() }
+            $classification = if ($info.PSObject.Properties.Name -contains 'ProblemClassification' -and $info.ProblemClassification) {
+                $info.ProblemClassification
+            } else {
+                Get-CrashDoctorProblemClassification -BugCheckCode $bugCheckCode -Parameters $params -FaultingModule $faultingModule -CandidateDrivers $stackDrivers
+            }
+
             $crashes.Add([pscustomobject][ordered]@{
-                Path                = $file.FullName
-                FileName            = $file.Name
-                FileSize            = $file.Length
-                CrashTimeUtc        = $crashTime.ToString('o')
-                CrashTimeLocal      = $crashTime.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss')
-                Format              = $info.Format
-                Architecture        = $info.Architecture
-                BugCheckCode        = ('0x{0:X8}' -f $bugCheckCode)
-                BugCheckName        = $bugCheckName
-                BugCheckParameters  = @($params | ForEach-Object { '0x{0:X}' -f [uint64]$_ })
-                FaultingModule      = $faultingModule
-                ExceptionAddress    = $exceptionAddressHex
-                Valid               = $true
-                Error               = $null
+                Path                  = $file.FullName
+                FileName              = $file.Name
+                FileSize              = $file.Length
+                CrashTimeUtc          = $crashTime.ToString('o')
+                CrashTimeLocal        = $crashTime.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss')
+                Format                = $info.Format
+                Architecture          = $info.Architecture
+                BugCheckCode          = ('0x{0:X8}' -f $bugCheckCode)
+                BugCheckName          = $bugCheckName
+                BugCheckParameters    = @($params | ForEach-Object { '0x{0:X}' -f [uint64]$_ })
+                FaultingModule        = $faultingModule
+                ExceptionAddress      = $exceptionAddressHex
+                ProblemClassification = $classification
+                StackDrivers          = @($stackDrivers)
+                Valid                 = $true
+                Error                 = $null
             })
         }
         catch {
             $crashes.Add([pscustomobject][ordered]@{
-                Path                = $file.FullName
-                FileName            = $file.Name
-                FileSize            = $file.Length
-                CrashTimeUtc        = $file.LastWriteTimeUtc.ToString('o')
-                CrashTimeLocal      = $file.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')
-                Format              = 'Unknown'
-                Architecture        = $null
-                BugCheckCode        = $null
-                BugCheckName        = $null
-                BugCheckParameters  = @()
-                FaultingModule      = $null
-                ExceptionAddress    = $null
-                Valid               = $false
-                Error               = $_.Exception.Message
+                Path                  = $file.FullName
+                FileName              = $file.Name
+                FileSize              = $file.Length
+                CrashTimeUtc          = $file.LastWriteTimeUtc.ToString('o')
+                CrashTimeLocal        = $file.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')
+                Format                = 'Unknown'
+                Architecture          = $null
+                BugCheckCode          = $null
+                BugCheckName          = $null
+                BugCheckParameters    = @()
+                FaultingModule        = $null
+                ExceptionAddress      = $null
+                ProblemClassification = $null
+                StackDrivers          = @()
+                Valid                 = $false
+                Error                 = $_.Exception.Message
             })
         }
     }
@@ -677,18 +1033,22 @@ function ConvertTo-CrashDoctorCrashHistoryMarkdown {
     $lines.Add("- Valid parsed dumps: **$validCount**")
     $latest = $crashList[0]
     $lines.Add("- Most recent crash: **$($latest.CrashTimeLocal)** ($($latest.BugCheckName))")
+    if ($latest.ProblemClassification) {
+        $lines.Add("- Probable cause family: **$($latest.ProblemClassification.Family)** (Confidence: $($latest.ProblemClassification.Confidence))")
+    }
     $lines.Add('')
 
     $lines.Add('## Crash index')
     $lines.Add('')
-    $lines.Add('| Date / Time (Local) | BugCheck Code | BugCheck Name | Faulting Module | Dump File | Size |')
-    $lines.Add('|---|---|---|---|---|---:|')
+    $lines.Add('| Date / Time (Local) | BugCheck Code | BugCheck Name | Problem Family | Faulting Module | Dump File | Size |')
+    $lines.Add('|---|---|---|---|---|---|---:|')
     foreach ($c in $crashList) {
         $name = if ($c.BugCheckName) { $c.BugCheckName.Replace('|', '\|') } else { 'Unknown' }
         $code = if ($c.BugCheckCode) { '`{0}`' -f $c.BugCheckCode } else { '—' }
         $mod = if ($c.FaultingModule) { '`{0}`' -f $c.FaultingModule } else { '—' }
+        $fam = if ($c.ProblemClassification) { "$($c.ProblemClassification.Family)" } else { '—' }
         $sizeKb = [math]::Round($c.FileSize / 1024, 0)
-        $lines.Add("| $($c.CrashTimeLocal) | $code | $name | $mod | $($c.FileName) | $sizeKb KB |")
+        $lines.Add("| $($c.CrashTimeLocal) | $code | $name | $fam | $mod | $($c.FileName) | $sizeKb KB |")
     }
 
     $lines.Add('')
@@ -703,8 +1063,18 @@ function ConvertTo-CrashDoctorCrashHistoryMarkdown {
         if ($c.BugCheckParameters -and $c.BugCheckParameters.Count -gt 0) {
             $lines.Add("- **Parameters:** $($c.BugCheckParameters -join ', ')")
         }
+        if ($c.ProblemClassification) {
+            $lines.Add("- **Problem family:** $($c.ProblemClassification.Family) (Confidence: $($c.ProblemClassification.Confidence))")
+            $lines.Add("- **Classification summary:** $($c.ProblemClassification.Summary)")
+            $lines.Add("- **Explanation:** $($c.ProblemClassification.Explanation)")
+            $lines.Add("- **Recommended next step:** $($c.ProblemClassification.RecommendedAction)")
+        }
         if ($c.FaultingModule) {
             $lines.Add(('- **Candidate faulting module:** `{0}`' -f $c.FaultingModule))
+        }
+        if ($c.StackDrivers -and $c.StackDrivers.Count -gt 0) {
+            $driverNames = ($c.StackDrivers | Select-Object -ExpandProperty Name -Unique) -join ', '
+            $lines.Add("- **Drivers active on crash stack:** $driverNames")
         }
         if ($c.ExceptionAddress) {
             $lines.Add(('- **Exception address:** `{0}`' -f $c.ExceptionAddress))
@@ -719,4 +1089,4 @@ function ConvertTo-CrashDoctorCrashHistoryMarkdown {
     return ($lines -join [Environment]::NewLine)
 }
 
-Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule
+Export-ModuleMember -Function Get-CrashDoctorDumpInfo, Get-CrashDoctorSystemCrashHistory, Get-CrashDoctorBugCheckName, ConvertTo-CrashDoctorCrashHistoryMarkdown, Find-CrashDoctorFaultingModule, Get-CrashDoctorProblemClassification, Get-CrashDoctorStackCandidateDrivers, Read-CrashDoctorMiniDumpThreads

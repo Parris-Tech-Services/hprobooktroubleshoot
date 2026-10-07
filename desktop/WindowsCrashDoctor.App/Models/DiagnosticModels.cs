@@ -230,8 +230,31 @@ public sealed class CrashHistoryRecord
     public List<string> BugCheckParameters { get; set; } = new();
     public string? FaultingModule { get; set; }
     public string? ExceptionAddress { get; set; }
+    public ProblemClassificationRecord? ProblemClassification { get; set; }
+    public List<StackDriverRecord> StackDrivers { get; set; } = new();
     public bool Valid { get; set; }
     public string? Error { get; set; }
+}
+
+public sealed class ProblemClassificationRecord
+{
+    public string Family { get; set; } = "Unknown";
+    public string Confidence { get; set; } = "Low";
+    public string Summary { get; set; } = "";
+    public string Explanation { get; set; } = "";
+    public string RecommendedAction { get; set; } = "";
+    public List<string> ContributingFactors { get; set; } = new();
+}
+
+public sealed class StackDriverRecord
+{
+    public string Name { get; set; } = "";
+    public string? FullPath { get; set; }
+    public string? BaseAddress { get; set; }
+    public string? StackAddress { get; set; }
+    public string? Offset { get; set; }
+    public uint ThreadId { get; set; }
+    public bool IsCoreComponent { get; set; }
 }
 
 public sealed class AppSettings

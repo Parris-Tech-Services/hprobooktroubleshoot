@@ -3,7 +3,7 @@
 This is the canonical product backlog derived from a September 2026 comparison against ten mature crash, hang and system-diagnostics tools.
 
 **Brand & naming:** Public user-facing brand is **Windows Doctor**. Technical identifiers (`WindowsCrashDoctor.exe`, `desktop/WindowsCrashDoctor.App`, `windows-crash-doctor/` modules) are retained internally for backward compatibility.  
-**Status:** **3 of 100 items completed and verified with automated tests** (`WCD-011`, `WCD-021`, `WCD-022`); **97 items remain open**. Completing an item requires implementation **and** a regression/acceptance test.  
+**Status:** **10 of 100 items completed and verified with automated tests** (`WCD-011`, `WCD-018`, `WCD-021`, `WCD-022`, `WCD-023`, `WCD-061`, `WCD-062`, `WCD-063`, `WCD-064`, `WCD-065`); **90 items remain open**. Completing an item requires implementation **and** a regression/acceptance test.  
 **Priorities:** `P0` = core diagnostic reliability, `P1` = high-value expansion, `P2` = advanced/productisation.  
 **Evidence rule:** new automation must preserve the current rule that observation, interpretation and causality are separate concepts.
 
@@ -43,7 +43,7 @@ Inspiration: A user-friendly crash-dump analyser that turns dump internals into 
 - [ ] **WCD-015 [P1]** Add symbolized kernel stack summaries to the human-readable report.
 - [ ] **WCD-016 [P1]** Add a dedicated loaded-modules-at-crash view.
 - [ ] **WCD-017 [P2]** Add configurable Microsoft symbol server and local symbol-store settings.
-- [ ] **WCD-018 [P0]** Classify conclusions into bounded problem families such as driver, hardware, thermal, memory corruption and software.
+- [x] **WCD-018 [P0]** Classify conclusions into bounded problem families such as driver, hardware, thermal, memory corruption and software.
 - [ ] **WCD-019 [P2]** Build a maintained knowledge base for rare, obscure and vendor-specific bugchecks.
 - [ ] **WCD-020 [P2]** Attach vetted troubleshooting and vendor-support links to findings when a known signature is matched.
 
@@ -53,7 +53,7 @@ Inspiration: A lightweight historical BSOD/minidump browser focused on bugchecks
 
 - [x] **WCD-021 [P0]** Add a historical crash table that indexes every discovered minidump chronologically.
 - [x] **WCD-022 [P0]** Show bugcheck name, code and all four bugcheck parameters in a compact crash card.
-- [ ] **WCD-023 [P0]** Enumerate addresses in each crash stack and map them back to candidate drivers/modules.
+- [x] **WCD-023 [P0]** Enumerate addresses in each crash stack and map them back to candidate drivers/modules.
 - [ ] **WCD-024 [P1]** Extract driver version-resource metadata such as product, company, description and file version.
 - [ ] **WCD-025 [P1]** Show the complete loaded-driver list for each selected crash.
 - [ ] **WCD-026 [P1]** Add a focused view containing only drivers/modules actually referenced by the crash stack.
@@ -111,11 +111,11 @@ Inspiration: High-volume, real-time file/Registry/process/thread/DLL tracing wit
 
 Inspiration: Windows' native crash/hang reporting, local dump, report-store and application recovery infrastructure.
 
-- [ ] **WCD-061 [P0]** Read and index the local Windows Error Reporting report stores.
-- [ ] **WCD-062 [P0]** Parse `.wer` files and WER signatures, report IDs and bucket IDs.
-- [ ] **WCD-063 [P0]** Audit current global and per-application LocalDumps configuration.
-- [ ] **WCD-064 [P0]** Offer an explicit, reversible helper for enabling per-application LocalDumps after user approval.
-- [ ] **WCD-065 [P0]** Capture and catalogue user-mode crash dumps produced by WER.
+- [x] **WCD-061 [P0]** Read and index the local Windows Error Reporting report stores.
+- [x] **WCD-062 [P0]** Parse `.wer` files and WER signatures, report IDs and bucket IDs.
+- [x] **WCD-063 [P0]** Audit current global and per-application LocalDumps configuration.
+- [x] **WCD-064 [P0]** Offer an explicit, reversible helper for enabling per-application LocalDumps after user approval.
+- [x] **WCD-065 [P0]** Capture and catalogue user-mode crash dumps produced by WER.
 - [ ] **WCD-066 [P1]** Detect and ingest WER application-hang/no-response reports.
 - [ ] **WCD-067 [P2]** Track WER report lifecycle state, including queued, archived, uploaded and purged reports where available.
 - [ ] **WCD-068 [P2]** Read and explain WER policy/consent settings and relevant Group Policy overrides.

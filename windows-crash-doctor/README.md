@@ -94,7 +94,9 @@ For `MDMP` minidumps Crash Doctor currently parses:
 - processor architecture and Windows build information;
 - exception thread/code/address/parameters when present;
 - loaded-module list and module names;
-- thread count;
+- thread count and thread stack memory descriptors (`MINIDUMP_THREAD`);
+- candidate driver addresses active on the crash stack mapped to module names (`WCD-023`);
+- bounded problem family classification: `Driver`, `Hardware`, `MemoryCorruption`, `StorageFileSystem`, `PowerThermal`, `SystemSoftware` (`WCD-018`);
 - `MemoryList`, `Memory64List` and `MemoryInfoList` summary metadata;
 - known stream names while retaining unknown stream IDs.
 
@@ -104,8 +106,19 @@ For Windows kernel crash-dump containers Crash Doctor currently recognises:
 - machine architecture;
 - processor count;
 - bugcheck code and four parameters;
+- bounded problem family classification (`WCD-018`);
 - key dump-header pointers/metadata;
 - 64-bit dump-type/size/time metadata where available.
+
+## Windows Error Reporting & LocalDumps (`WerDoctor.psm1`)
+
+Windows Doctor provides comprehensive native diagnostics for Windows Error Reporting (WER) and user-mode application crashes:
+
+- **WER store indexing (`WCD-061`)**: Indexes both user (`%LOCALAPPDATA%\Microsoft\Windows\WER`) and system (`%ProgramData%\Microsoft\Windows\WER`) report archives and queues.
+- **WER report parsing (`WCD-062`)**: Parses `.wer` files into structured records extracting EventType, FILETIME timestamps, Bucket IDs, Application Name/Version, Fault Module, and Exception Code (`0x...`).
+- **LocalDumps configuration audit (`WCD-063`)**: Inspects global and per-application `LocalDumps` registry keys (`HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps`), verifies dump folder existence, write permissions, and available disk space.
+- **Reversible dump configuration (`WCD-064`)**: Provides `Set-CrashDoctorLocalDumps` and `Remove-CrashDoctorLocalDumps` with `-WhatIf` dry-run preview, privilege verification, and explicit rollback commands.
+- **User-mode crash catalogue (`WCD-065`)**: Automatically catalogues user-mode crash dumps in configured LocalDumps folders and WER directories, cross-referencing minidump streams with `.wer` event records.
 
 ### Still required before WCD-001 is complete
 
@@ -115,7 +128,7 @@ For Windows kernel crash-dump containers Crash Doctor currently recognises:
 - additional corruption/truncation fuzz cases;
 - a stable documented dump JSON schema once the native structures settle.
 
-Symbol resolution, stack unwinding and source mapping are deliberately separate roadmap items (`WCD-002`, `WCD-004`, `WCD-005`, `WCD-009`).
+Symbol resolution, deep stack unwinding and source mapping are tracked in `WCD-002`, `WCD-004`, `WCD-005`, and `WCD-009`.
 
 ## Snapshot outputs
 

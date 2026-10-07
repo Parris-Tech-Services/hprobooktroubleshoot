@@ -175,6 +175,8 @@ Import-Module $coreModulePath -Force
 if (Test-Path -LiteralPath $telemetryModulePath -PathType Leaf) { Import-Module $telemetryModulePath -Force }
 Import-Module $registryModulePath -Force
 if (Test-Path -LiteralPath $dumpModulePath -PathType Leaf) { Import-Module $dumpModulePath -Force }
+$werModulePath = Join-Path $PSScriptRoot 'WerDoctor.psm1'
+if (Test-Path -LiteralPath $werModulePath -PathType Leaf) { Import-Module $werModulePath -Force }
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = $EvidencePath }
 if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) { New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null }
@@ -243,6 +245,40 @@ if ($crashes.Count -gt 0) {
     }
 }
 
+$werReport = $null
+$localDumpsConfig = $null
+$userModeDumps = @()
+if (Get-Command Get-CrashDoctorWerReportStores -ErrorAction SilentlyContinue) {
+    try {
+        $werReport = Get-CrashDoctorWerReportStores
+        $localDumpsConfig = Get-CrashDoctorLocalDumpsConfig
+        $userModeDumps = @(Get-CrashDoctorUserModeCrashDumps)
+
+        $report | Add-Member -NotePropertyName WindowsErrorReporting -NotePropertyValue ([pscustomobject][ordered]@{
+            Stores          = $werReport.Stores
+            TotalStores     = $werReport.TotalStores
+            TotalReportDirs = $werReport.TotalReportDirs
+            UserModeDumps   = $userModeDumps
+        }) -Force
+
+        $report | Add-Member -NotePropertyName LocalDumps -NotePropertyValue $localDumpsConfig -Force
+
+        if ($userModeDumps.Count -gt 0) {
+            $latestUm = $userModeDumps[0]
+            $finding = [pscustomobject][ordered]@{
+                Id             = 'user-mode-crashes-detected'
+                Severity       = 'Medium'
+                Confidence     = 'High'
+                Title          = ("User-mode application crash dump detected ({0} dump{1})" -f $userModeDumps.Count, $(if ($userModeDumps.Count -eq 1) { '' } else { 's' }))
+                Evidence       = ("{0} user-mode crash dump(s) found; latest was {1} for {2}." -f $userModeDumps.Count, $latestUm.CrashTimeLocal, $latestUm.Application)
+                Interpretation = 'One or more user-space applications crashed and generated memory dumps under the local crash dump or WER stores.'
+                NextStep       = 'Check the Windows Error Reporting summary and event logs for the faulting application.'
+            }
+            $report.Findings = @($report.Findings) + @($finding)
+        }
+    } catch { }
+}
+
 $markdown = ConvertTo-CrashDoctorMarkdown -Report $report
 $product = $report.Product
 $productHeader = @(
@@ -264,6 +300,14 @@ if ($null -ne $telemetry -and $telemetry.Available) {
 if ($crashes.Count -gt 0) {
     $crashMarkdown = ConvertTo-CrashDoctorCrashHistoryMarkdown -Crashes $crashes
     if (-not [string]::IsNullOrWhiteSpace($crashMarkdown)) { $markdown += [Environment]::NewLine + [Environment]::NewLine + $crashMarkdown }
+}
+if ($null -ne $werReport -and (Get-Command ConvertTo-CrashDoctorWerMarkdown -ErrorAction SilentlyContinue)) {
+    try {
+        $werMarkdown = ConvertTo-CrashDoctorWerMarkdown -StoresReport $werReport -LocalDumpsConfig $localDumpsConfig -UserModeDumps $userModeDumps
+        if (-not [string]::IsNullOrWhiteSpace($werMarkdown)) {
+            $markdown += [Environment]::NewLine + [Environment]::NewLine + $werMarkdown
+        }
+    } catch { }
 }
 
 $markdownPath = Join-Path $OutputDirectory 'crash-doctor-report.md'
