@@ -40,8 +40,8 @@ function Get-ExpectedSha256 {
 }
 
 Write-Host ''
-Write-Host 'Windows Crash Doctor verified CLI installer' -ForegroundColor Cyan
-Write-Host '===========================================' -ForegroundColor Cyan
+Write-Host 'Windows Doctor verified CLI installer' -ForegroundColor Cyan
+Write-Host '=====================================' -ForegroundColor Cyan
 Write-Host "Install location: $InstallRoot"
 Write-Host 'The installer itself stays in standard-user mode; the diagnostic runner requests UAC only when collection actually needs it.'
 Write-Host ''
@@ -70,7 +70,7 @@ try {
         }
     }
 
-    Write-Host '4/6 Installing/updating Windows Crash Doctor...'
+    Write-Host '4/6 Installing/updating Windows Doctor...'
     $installParent = Split-Path -Parent $InstallRoot
     New-Item -ItemType Directory -Path $installParent -Force | Out-Null
     $staging = Join-Path $installParent ('App.new-' + [guid]::NewGuid().ToString('N'))
@@ -106,14 +106,14 @@ try {
 
     Write-Host '6/6 Creating launchers...'
     $desktop = [Environment]::GetFolderPath('Desktop')
-    $cmdPath = Join-Path $desktop 'Windows Crash Doctor.cmd'
+    $cmdPath = Join-Path $desktop 'Windows Doctor.cmd'
     $cmd = @"
 @echo off
 setlocal
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$runner"
 set EXITCODE=%ERRORLEVEL%
 echo.
-if not "%EXITCODE%"=="0" echo Windows Crash Doctor exited with code %EXITCODE%.
+if not "%EXITCODE%"=="0" echo Windows Doctor exited with code %EXITCODE%.
 echo Press any key to close this window.
 pause >nul
 exit /b %EXITCODE%
@@ -121,7 +121,7 @@ exit /b %EXITCODE%
     Set-Content -LiteralPath $cmdPath -Value $cmd -Encoding ASCII
 
     $startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-    $shortcutPath = Join-Path $startMenu 'Windows Crash Doctor.lnk'
+    $shortcutPath = Join-Path $startMenu 'Windows Doctor.lnk'
     try {
         $shell = New-Object -ComObject WScript.Shell
         $shortcut = $shell.CreateShortcut($shortcutPath)
@@ -141,7 +141,7 @@ exit /b %EXITCODE%
 
     if (-not $InstallOnly) {
         Write-Host ''
-        Write-Host 'Starting Windows Crash Doctor. UAC will be requested by the runner for the diagnostic collection.' -ForegroundColor Cyan
+        Write-Host 'Starting Windows Doctor. UAC will be requested by the runner for the diagnostic collection.' -ForegroundColor Cyan
         & $runner
     }
 }

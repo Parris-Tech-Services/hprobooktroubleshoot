@@ -1,21 +1,21 @@
-# Windows Crash Doctor technician toolkit integration TODO
+# Windows Doctor technician toolkit integration TODO
 
-The native desktop toolkit provides detection, configured launchers, selected diagnostic/action recipes and external report attachment. This checklist tracks the fuller tool-specific integrations still needed. Opening a website link does not install or run a tool. Review current vendor licensing before commercial use; no free-tier endpoint limits are assumed.
+The native desktop toolkit provides detection, configured launchers, selected diagnostic/action recipes and external report attachment. This checklist tracks the fuller tool-specific integrations still needed. Opening a website link does not install or run a tool. Review current vendor licensing before commercial use; no free-tier endpoint limits are assumed. Technical identifiers (`WindowsCrashDoctor.exe`, `desktop/WindowsCrashDoctor.App`) are retained internally for backward compatibility.
 
 ## Delivery order
 
 Implemented capabilities and verification: [TOOLKIT_IMPLEMENTATION.md](TOOLKIT_IMPLEMENTATION.md).
 
 - [x] TK-001: Add a categorized, searchable official-link catalog accessible from Integrations.
-- [ ] TK-002 [P0]: Detect installed tools and versions; show available, missing, unsupported and licence-review states.
-- [ ] TK-003 [P0]: Add user-selected launchers for installed tools with validated executable paths.
-- [ ] TK-004 [P0]: Add verified, opt-in installers with checksums, provenance and bounded failure handling.
-- [ ] TK-005 [P0]: Complete WinDbg/cdb symbol configuration and dump handoff; fix sensor path detection and PowerShell compatibility in shipped builds.
-- [ ] TK-006 [P1]: Import tool reports into a common evidence schema with timestamps, tool version, exit status and source paths.
-- [ ] TK-007 [P1]: Add repair workflows with exact command previews, privilege/reboot requirements, cancellation and before/after evidence.
-- [ ] TK-008 [P2]: Add bench intake, stress-test scheduling, boot-media instructions and external-result attachment.
-- [ ] TK-009 [P2]: Add separately authorized ITAD workflows with serial-number target verification and erasure certificates.
-- [ ] TK-010 [P2]: Add separately configured RMM/asset integrations with scoped credentials and privacy review.
+- [x] TK-002 [P0]: Detect installed tools and versions; show available, missing, unsupported and licence-review states.
+- [x] TK-003 [P0]: Add user-selected launchers for installed tools with validated executable paths.
+- [x] TK-004 [P0]: Add verified, opt-in installers with checksums, provenance and bounded failure handling.
+- [x] TK-005 [P0]: Complete WinDbg/cdb symbol configuration and dump handoff; fix sensor path detection and PowerShell compatibility in shipped builds.
+- [x] TK-006 [P1]: Import tool reports into a common evidence schema with timestamps, tool version, exit status and source paths.
+- [ ] TK-007 [P1]: Add repair workflows with exact command previews, privilege/reboot requirements, cancellation and before/after evidence (remains open).
+- [ ] TK-008 [P2]: Add bench intake, stress-test scheduling, boot-media instructions and external-result attachment (remains open).
+- [ ] TK-009 [P2]: Add separately authorized ITAD workflows with serial-number target verification and erasure certificates (remains open).
+- [ ] TK-010 [P2]: Add separately configured RMM/asset integrations with scoped credentials and privacy review (remains open).
 
 ## Acceptance criteria
 

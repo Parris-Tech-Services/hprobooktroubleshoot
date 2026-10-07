@@ -11,7 +11,7 @@ public partial class MainWindow
     {
         if (_latestEvidencePath is null || !Directory.Exists(_latestEvidencePath))
         {
-            MessageBox.Show(this, "There is no completed diagnostic run to export yet.", "Windows Crash Doctor", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "There is no completed diagnostic run to export yet.", "Windows Doctor", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -29,7 +29,7 @@ public partial class MainWindow
                   (plan.ExcludedCount > excludedPreview.Count ? $"{Environment.NewLine}• …and {plan.ExcludedCount - excludedPreview.Count} more" : string.Empty);
 
             var answer = MessageBox.Show(this,
-                $"Crash Doctor reviewed this bundle before export.\n\n" +
+                $"Windows Doctor reviewed this bundle before export.\n\n" +
                 $"Include: {plan.IncludedCount} file(s)\n" +
                 $"Exclude: {plan.ExcludedCount} high-risk/unscannable file(s)\n" +
                 $"Text files requiring redaction: {plan.RedactedFileCount}\n" +

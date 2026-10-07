@@ -1,33 +1,39 @@
-# HP ProBook 11 G2 hard-freeze investigation + Windows Crash Doctor
+# HP ProBook 11 G2 hard-freeze investigation + Windows Doctor
 
 This repository serves two related purposes:
 
 1. preserve an evidence-driven investigation of an HP ProBook 11 G2 that hard-freezes; and
-2. develop **Windows Crash Doctor**, a reusable Windows crash/hang triage tool grown from that investigation.
+2. develop **Windows Doctor** (formerly Windows Crash Doctor), a reusable Windows crash, hang and network triage tool grown from that investigation.
 
 The core rule is simple: keep **observation**, **current-machine telemetry**, **inherited image history**, **interpretation** and **causality** separate. Change one major variable at a time.
 
-> **Engineering status:** Windows Crash Doctor is an advanced preview, not yet a hardened general release. The repository-wide [`REPOSITORY_AUDIT.md`](docs/REPOSITORY_AUDIT.md) tracks current integration, testing, privacy, installer and release-readiness risks with explicit acceptance criteria.
+> **Engineering status:** Windows Doctor is an advanced preview, not yet a hardened general release. The repository-wide [`REPOSITORY_AUDIT.md`](docs/REPOSITORY_AUDIT.md) tracks integration, testing, privacy, code signing and release-readiness risks with explicit acceptance criteria.
 
-## Windows Crash Doctor Desktop
+### Naming convention
 
-Windows Crash Doctor now has a native Windows desktop front end in `desktop/WindowsCrashDoctor.App`.
+- **User-facing brand:** **Windows Doctor** (application window titles, shortcuts, UI cards, and diagnostic reports).
+- **Internal / binary / directory compatibility:** `WindowsCrashDoctor.exe`, `desktop/WindowsCrashDoctor.App`, `windows-crash-doctor/` modules, and `%LOCALAPPDATA%\WindowsCrashDoctor` paths are intentionally retained for backward compatibility, release asset continuity, and script stability.
+
+## Windows Doctor Desktop
+
+Windows Doctor has a native Windows desktop front end in `desktop/WindowsCrashDoctor.App`.
 
 The desktop preview includes:
 
 - a polished dashboard with live CPU/RAM/temperature cards;
-- one-click **Run Full Diagnosis**;
+- one-click **Run Full Diagnosis** with collector timeout guards and culture-invariant date parsing;
+- one-click **Scan BSOD / Dumps** for native historical minidump discovery, stop code decoding and faulting driver attribution;
 - one-click **Network Doctor** for DHCP/APIPA, duplicate IP, DNS, HTTPS, Wi-Fi authentication, proxy/filter and browser-vs-network triage;
 - ranked evidence cards with severity and recommended next action;
 - live diagnostic progress and logs;
-- optional 30-minute LibreHardwareMonitor deep sensor capture; normalization of that JSONL capture into the snapshot telemetry rules is still being integrated;
+- 30-minute LibreHardwareMonitor deep sensor capture, unified directly into diagnostic rules for memory minimums, drive wear, thermal throttling and peak temperatures (`AUD-004`);
 - local diagnostic-run history;
-- native `.dmp` / `.mdmp` structural analysis through the Crash Doctor dump parser;
+- native `.dmp` / `.mdmp` structural analysis through the dump parser;
 - open-source provider installation/status;
-- a native searchable technician toolkit from **Integrations → Technician toolkit** with installed-tool detection, launchers, diagnostic/repair handoffs, report attachments and reviewed exports;
-- local diagnostic ZIP export with an explicit sensitivity warning; structured privacy review/redaction is still planned;
+- a native searchable technician toolkit from **Integrations → Technician toolkit** with installed-tool detection, WinGet package installers, launchers, diagnostic/repair handoffs, report attachments and reviewed exports;
+- local diagnostic ZIP export with an explicit sensitivity warning and default exclusion of unredacted secrets; structured privacy review/redaction is still planned;
 - light and dark themes;
-- a self-contained `WindowsCrashDoctor.exe` build with the core PowerShell engine embedded; the audit tracks an outstanding telemetry-module packaging gap.
+- a self-contained single-file `WindowsCrashDoctor.exe` build embedding the complete PowerShell diagnostic engine, telemetry analyzer, network doctor, dump parser and technician toolkit data (`AUD-003`).
 
 ### Download the desktop EXE
 
@@ -35,34 +41,33 @@ The rolling desktop preview release is built by GitHub Actions:
 
 **[Download WindowsCrashDoctor.exe](https://github.com/Parris-Tech-Services/hprobooktroubleshoot/releases/download/windows-crash-doctor-desktop-latest/WindowsCrashDoctor.exe)**
 
-The EXE is currently unsigned, so Windows SmartScreen may show **Unknown Publisher**. A SHA-256 file is published beside the EXE for manual verification. The current GUI installer does **not yet verify that checksum automatically**; this is a P0 audit finding rather than a completed trust feature.
+The EXE is currently unsigned, so Windows SmartScreen may show **Unknown Publisher**. Published SHA-256 checksum files are provided beside every release asset. Both the one-click GUI installer (`INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd`) and PowerShell installers **verify the SHA-256 digest automatically** before copying or launching the executable (`AUD-005`).
 
-For a one-click preview install that creates a Desktop shortcut, download and double-click [`INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd`](INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd). For machines where provenance matters, review the audit and verify the release hash first.
+For a one-click preview install that verifies SHA-256 and creates a Desktop shortcut, download and double-click [`INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd`](INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd).
 
 ## Project status
 
 **Current `main` contains:**
 
-- reproducible Windows diagnostic collector;
-- evidence-first Crash Doctor snapshot analyser;
+- reproducible Windows diagnostic collector with msinfo32 timeout guards;
+- evidence-first snapshot analyser;
 - Markdown + JSON reports;
-- native minidump/kernel-dump parser foundation;
+- native minidump/kernel-dump parser and historical crash scanner (`WCD-011`, `WCD-021`, `WCD-022`, `TK-214`);
+- unified deep sensor JSONL telemetry pipeline (`AUD-004`);
 - verified optional open-source provider layer;
-- synthetic Windows regression tests and PowerShell QA;
+- synthetic Windows regression tests, dump smoke tests, and PowerShell QA;
 - public-evidence/BitLocker recovery-key guard;
-- command-line launcher/install path;
-- native WPF desktop GUI with Network Doctor and automated preview EXE release pipeline;
+- verified installer paths with SHA-256 digest verification (`AUD-005`);
+- native WPF desktop GUI with Network Doctor, Technician Toolkit, and automated preview release pipeline;
 - documented HP ProBook evidence and controlled test plan.
 
-The **[repository engineering audit](docs/REPOSITORY_AUDIT.md)** is the quality/risk source of truth and identifies the current release blockers. Planned capabilities are tracked in the **[100-item Windows Crash Doctor roadmap](docs/ROADMAP_100.md)**, while cross-repository engineering adaptations are tracked separately in the **[GitHub Borrow Roadmap](docs/GITHUB_BORROW_ROADMAP.md)**.
+The **[repository engineering audit](docs/REPOSITORY_AUDIT.md)** is the quality/risk source of truth and tracks remaining release blockers. Planned capabilities are tracked in the **[100-item Windows Crash Doctor roadmap](docs/ROADMAP_100.md)**, while cross-repository engineering adaptations are tracked separately in the **[GitHub Borrow Roadmap](docs/GITHUB_BORROW_ROADMAP.md)**.
 
 The **[technician toolkit integration TODO](docs/TOOLKIT_INTEGRATION_TODO.md)** covers Windows repair, hardware tests, recovery, ITAD, networks, security, remote support and administration tools. The native desktop toolkit detects installed executables, lets you locate portable tools, opens vendor instructions, runs selected diagnostics with captured output, opens selected repairs in a visible console, and attaches external reports with SHA-256 provenance. See **[implemented capabilities and remaining work](docs/TOOLKIT_IMPLEMENTATION.md)**. Maintain the canonical entries in `windows-crash-doctor/integrations/toolkit.tsv` and curated recipes in `scripts/build-toolkit-actions.py`; run both `python scripts/build-toolkit-actions.py` and `python scripts/build-toolkit-catalog.py` before building. The **[HTML catalog](docs/TOOLKIT_CATALOG.html)** remains available for offline review.
 
 ## Command-line preview install
 
-If you prefer the original PowerShell/console workflow, the development installer is available at `scripts/Install-WindowsCrashDoctor.ps1`.
-
-The current installer downloads mutable `main`, requests Administrator rights and runs the installed workflow. **It is therefore a preview/development path, not yet the recommended hardened install mechanism.** `AUD-005` in the repository audit requires immutable version pinning and cryptographic verification before elevated execution.
+If you prefer the PowerShell/console workflow, the verified CLI installer is available at `scripts/Install-WindowsCrashDoctor.ps1`. It downloads the verified release package (`WindowsCrashDoctor-Engine.zip`), verifies its SHA-256 digest against `WindowsCrashDoctor-Engine.zip.sha256`, runs local engine self-tests, and configures the `Windows Doctor.cmd` desktop launcher.
 
 ## Manual quick start
 

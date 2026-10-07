@@ -41,7 +41,7 @@ function Get-ExpectedSha256 {
 
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 try {
-    Write-Host 'Resolving the tested Windows Crash Doctor canary release…' -ForegroundColor Cyan
+    Write-Host 'Resolving the tested Windows Doctor canary release…' -ForegroundColor Cyan
     $release = Invoke-RestMethod -Headers $headers -Uri $apiUrl -Method Get
     if (-not $release.prerelease) { Write-Warning 'Expected a prerelease/canary release but GitHub returned a non-prerelease release.' }
 

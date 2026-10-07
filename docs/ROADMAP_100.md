@@ -1,8 +1,9 @@
-# Windows Crash Doctor — 100-item upgrade roadmap
+# Windows Doctor — 100-item upgrade roadmap
 
 This is the canonical product backlog derived from a September 2026 comparison against ten mature crash, hang and system-diagnostics tools.
 
-**Status:** all items below are intentionally unchecked. Completing an item requires implementation **and** a regression/acceptance test.  
+**Brand & naming:** Public user-facing brand is **Windows Doctor**. Technical identifiers (`WindowsCrashDoctor.exe`, `desktop/WindowsCrashDoctor.App`, `windows-crash-doctor/` modules) are retained internally for backward compatibility.  
+**Status:** **3 of 100 items completed and verified with automated tests** (`WCD-011`, `WCD-021`, `WCD-022`); **97 items remain open**. Completing an item requires implementation **and** a regression/acceptance test.  
 **Priorities:** `P0` = core diagnostic reliability, `P1` = high-value expansion, `P2` = advanced/productisation.  
 **Evidence rule:** new automation must preserve the current rule that observation, interpretation and causality are separate concepts.
 

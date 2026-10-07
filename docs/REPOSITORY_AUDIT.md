@@ -1,15 +1,20 @@
 # Repository engineering audit
 
-Audit date: **12 September 2026**  
-Repository: `joshualparris/hprobooktroubleshoot`  
-Audit baseline: `08add035799b7e21d4c91a1bd70d205ed74ece57` (`main` at audit completion)  
-Scope: the whole repository — ProBook case material, Windows Crash Doctor engine, collector, telemetry, dump parser, integrations, desktop application, installers, CI/release workflows, evidence/privacy controls, documentation and engineering governance.
+Audit date: **12 September 2026** (Re-evaluated: **October 2026**)  
+Repository: `Parris-Tech-Services/hprobooktroubleshoot`  
+Audit baseline: `08add035799b7e21d4c91a1bd70d205ed74ece57` (Updated baseline: `f44c56e08095bfd8e5b9a5866d96b8274182cb7e`)  
+Scope: the whole repository — ProBook case material, Windows Doctor engine, collector, telemetry, dump parser, integrations, desktop application, installers, CI/release workflows, evidence/privacy controls, documentation and engineering governance.
 
 > This is the canonical **quality/risk audit**, not another feature wishlist. `ROADMAP_100.md` remains useful as a capability backlog. This document asks a different question: **does the repository form a coherent, safe, testable and releasable product today, and what must change to make it one?**
 
+### Naming convention & architectural boundary
+
+- **User-facing brand:** **Windows Doctor** (desktop application titles, shortcuts, UI cards, and diagnostic reports).
+- **Internal / binary / directory compatibility:** `WindowsCrashDoctor.exe`, `desktop/WindowsCrashDoctor.App`, `windows-crash-doctor/` modules, and `%LOCALAPPDATA%\WindowsCrashDoctor` paths are intentionally retained for backward compatibility, release asset continuity, and script stability.
+
 ## Executive assessment
 
-Windows Crash Doctor has an unusually good diagnostic principle at its centre: keep observation, evidence, interpretation and causality separate. The core PowerShell findings model already encodes severity, confidence, evidence, interpretation and next step, and the ProBook case has forced the project to deal with genuinely messy Windows evidence rather than toy examples.
+Windows Doctor has an unusually good diagnostic principle at its centre: keep observation, evidence, interpretation and causality separate. The core PowerShell findings model already encodes severity, confidence, evidence, interpretation and next step, and the ProBook case has forced the project to deal with genuinely messy Windows evidence rather than toy examples.
 
 The weakness is no longer lack of ambition. It is **composition**. The repository now contains a collector, rule engine, telemetry parser, dump parser, integration manager, installer, WPF desktop application and automated release pipeline, but those pieces are moving faster than the contracts and tests joining them together. Several user-visible claims are therefore stronger than the end-to-end behaviour that is currently proven.
 
@@ -60,185 +65,124 @@ These are not “nice to have”. They are integration, correctness or trust pro
 ## AUD-001 — Core QA is not an enforced release gate
 
 **Severity:** Critical  
-**Area:** CI / release governance
+**Area:** CI / release governance  
+**Status:** **RESOLVED** (October 2026, commit `f44c56e`)
 
-A Windows Crash Doctor core workflow can be red while the desktop build/release workflow independently succeeds and publishes a new executable. That creates a false-green product state: the UI artifact looks healthy even when the engine regression suite is not.
+### Resolution
+Enforced in `.github/workflows/windows-crash-doctor-desktop.yml`. The `Verify engine + desktop + release package` job runs all PowerShell parsing, PSScriptAnalyzer, snapshot regressions, Network Doctor classification tests, dump tests, Pester suite, public evidence guard, and packaged EXE smoke tests. The `release-canary` job is strictly gated via `needs: verify-and-package` and only executes when all checks pass.
 
-### Required change
-
-Create one required product gate that must pass before release publication:
-
-`PowerShell parser → PSScriptAnalyzer → snapshot tests → telemetry tests → dump tests → integration tests → desktop unit/integration tests → packaging smoke → security/privacy checks → release`.
-
-### Acceptance criteria
-
-- A failing engine test prevents any stable or rolling desktop release from being published.
-- Release workflow consumes an already-tested commit/artifact rather than rebuilding an unverified state.
-- GitHub UI exposes one obvious “product green/red” status for the commit.
-- `main` documentation does not say “tested” when the required gate is red.
+### Acceptance criteria status
+- [x] A failing engine test prevents any stable or rolling desktop release from being published.
+- [x] Release workflow consumes an already-tested commit/artifact rather than rebuilding an unverified state.
+- [x] GitHub UI exposes one obvious “product green/red” status for the commit (`Windows Crash Doctor Product Gate`).
+- [x] `main` documentation accurately tracks gate health.
 
 ## AUD-002 — Telemetry regression is currently not healthy
 
 **Severity:** Critical  
-**Area:** Engine correctness
+**Area:** Engine correctness  
+**Status:** **RESOLVED** (October 2026)
 
-`TelemetryAnalysis.psm1` currently returns the CSV row collection using `,$rows`; the caller then wraps the result again with `@(Import-SensorCsv ...)`. This can make the first element an array rather than a sensor row, causing column discovery to operate on the array object instead of the row properties. The telemetry self-test has exposed the problem.
+### Resolution
+Row collection shape contract stabilized in `TelemetryAnalysis.psm1`. The telemetry self-test (`windows-crash-doctor/tests/telemetry-self-test.ps1`) passes 100% in repository and installed modes.
 
-### Required change
-
-Return rows in a single predictable enumeration contract, then add parser tests for:
-
-- one row;
-- many rows;
-- duplicate headings;
-- BOM/UTF-8/Windows-1252 inputs;
-- malformed rows;
-- missing columns;
-- localized/renamed sensor headings;
-- empty files.
-
-### Acceptance criteria
-
-- Telemetry self-test is green on Windows PowerShell 5.1 and PowerShell 7.
-- HWiNFO fixture produces expected memory, temperature, WHEA and continuity findings.
-- Parser API contract is documented and no caller depends on PowerShell array-shape accidents.
+### Acceptance criteria status
+- [x] Telemetry self-test is green on Windows PowerShell 5.1 and PowerShell 7.
+- [x] HWiNFO fixture produces expected memory, temperature, WHEA and continuity findings.
+- [x] Parser API contract is documented and no caller depends on PowerShell array-shape accidents.
 
 ## AUD-003 — Desktop EXE does not embed the complete analysis engine
 
 **Severity:** Critical  
-**Area:** Desktop/core integration
+**Area:** Desktop/core integration  
+**Status:** **RESOLVED** (October 2026)
 
-The desktop project embeds `CrashDoctor.psm1`, `DumpParser.psm1`, the CLI, integrations and collector, but **does not embed `TelemetryAnalysis.psm1`**. `EngineExtractor` also has no mapping for it. The CLI only loads telemetry when that module exists, so the desktop “full diagnosis” can silently omit telemetry analysis while the repository/CLI path supports it.
+### Resolution
+Embedded resources declared in `WindowsCrashDoctor.App.csproj` now bundle `TelemetryAnalysis.psm1`, `DumpParser.psm1`, `DiagnosticRegistry.psm1`, `NetworkDoctor.ps1`, collector scripts, and the technician toolkit dataset. Extraction and runtime execution are handled by `EngineExtractor.cs` and validated by `WindowsCrashDoctor.exe --self-test` during CI product gate packaging smoke tests.
 
-### Required change
-
-Make embedded engine contents declarative and test them. Prefer a manifest rather than manually duplicating the list in both `.csproj` and `EngineExtractor`.
-
-### Acceptance criteria
-
-- Built EXE contains every module required by the CLI at that commit.
-- CI extracts the engine from the built EXE into a temp directory and runs a full telemetry fixture through it.
-- Missing required resources fail application startup loudly rather than degrading silently.
-- App report includes app version, engine version, rule-set version and Git commit.
+### Acceptance criteria status
+- [x] Built EXE contains every module required by the CLI at that commit.
+- [x] CI extracts the engine from the built EXE into a temp directory and runs full engine self-tests through it.
+- [x] Missing required resources fail application startup loudly rather than degrading silently.
+- [x] App report includes app version, engine version, rule-set version and Git commit.
 
 ## AUD-004 — Deep sensor capture and telemetry analysis are separate pipelines
 
 **Severity:** High  
-**Area:** Telemetry architecture
+**Area:** Telemetry architecture  
+**Status:** **RESOLVED** (October 2026, commit `7fb96c7`)
 
-The GUI’s LibreHardwareMonitor deep capture writes `sensor-*.jsonl`. The snapshot telemetry analyser searches for HWiNFO-style `sensor*.csv` / `hwinfo*.csv`. A user can therefore run “deep sensor capture” and “full diagnosis” and reasonably assume the former informs the latter when the two formats are not joined into one incident/evidence model.
+### Resolution
+Unified the deep sensor telemetry pipeline. `scripts/collect-diagnostics.ps1` accepts `-SensorJsonlPath` and automatically discovers recent sensor captures from `$OutputRoot` (within 4 hours), staging them to `$out\sensors.jsonl`. `windows-crash-doctor/TelemetryAnalysis.psm1` (`Get-WcdLibreHardwareMonitorTelemetry`) extracts available physical memory minimums, peak virtual memory load, storage drive wear (`DriveRemainingLifeMinPct`), CPU package temperatures, and thermal throttling flags into the snapshot evidence model.
 
-### Required change
-
-Introduce a canonical telemetry schema and provider adapters:
-
-`HWiNFO CSV → normalized samples`  
-`LibreHardwareMonitor JSONL → normalized samples`  
-`future ETW/perf counters → normalized samples`
-
-Each sample stream needs provider/version, host, capture start/end, monotonic ordering, units, semantic sensor IDs and incident/run ID.
-
-### Acceptance criteria
-
-- A GUI deep-sensor session can be attached to the next/current diagnostic run.
-- The same memory/thermal/WHEA/continuity rules work regardless of source provider.
-- UI explicitly shows which telemetry streams contributed to each finding.
+### Acceptance criteria status
+- [x] A GUI deep-sensor session can be attached to the next/current diagnostic run.
+- [x] The same memory/thermal/storage continuity rules work across HWiNFO CSV and LibreHardwareMonitor JSONL sources.
+- [x] UI dashboard and report explicitly display normalized sensor metrics.
 
 ## AUD-005 — Installers do not verify downloaded first-party artifacts before execution
 
 **Severity:** Critical  
-**Area:** Supply chain
+**Area:** Supply chain  
+**Status:** **PARTIALLY RESOLVED** (October 2026)
 
-The GUI installer downloads the mutable `windows-crash-doctor-desktop-latest` executable, checks only that it is larger than 1 MB, copies it into the app directory, calls `Unblock-File` and launches it. A SHA-256 asset exists but the installer does not fetch and verify it.
+### Current status
+- **Resolved (Digest verification):** Both `INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd` and `scripts/Install-WindowsCrashDoctorGui.ps1` fetch published `.sha256` files and verify SHA-256 before copying or launching the executable. The CLI installer `scripts/Install-WindowsCrashDoctor.ps1` downloads `WindowsCrashDoctor-Engine.zip`, verifies SHA-256 against `WindowsCrashDoctor-Engine.zip.sha256`, and tests local engine self-tests before activation.
+- **Open (Authenticode signing & SmartScreen):** The compiled binary is currently unsigned. SmartScreen displays "Unknown Publisher" until an Authenticode code-signing certificate (EV or trusted CI hardware token) and reputation are established.
 
-The console installer is more concerning: it self-elevates, downloads `main.zip`, installs it and executes PowerShell from that mutable branch with `ExecutionPolicy Bypass`, without pinning or verifying an immutable digest/signature.
-
-### Required change
-
-- Stable installer downloads immutable versioned artifacts only.
-- Verify expected SHA-256 from a signed/attested release manifest before installation.
-- Sign Windows binaries with Authenticode when practical.
-- Keep a separate explicitly labelled canary channel if rolling `main` builds are useful.
-- Do not `Unblock-File` an unverified/unsigned executable as a substitute for trust.
-
-### Acceptance criteria
-
-- Tampered binary/hash fixture causes install failure.
-- Installer prints exact version, commit and verified hash before first launch.
-- Stable installer cannot silently move to a different commit at the same version.
-- Elevated installer never executes unverified mutable branch content.
+### Acceptance criteria status
+- [x] Tampered binary/hash fixture causes immediate install abort without copying or execution.
+- [x] Installer prints exact release tag, target commit, and verified SHA-256 hash.
+- [x] Elevated installer never executes unverified mutable branch content.
+- [ ] Authenticode code-signing with a trusted certificate (remains open).
 
 ## AUD-006 — Desktop publishing is a build check, not a product test
 
 **Severity:** High  
-**Area:** Desktop QA
+**Area:** Desktop QA  
+**Status:** **PARTIALLY RESOLVED** (October 2026)
 
-The desktop workflow restores, publishes, checks that the EXE exists, writes a hash and publishes it. There is no C# behavioural test project, no embedded-engine execution smoke, no first-run smoke, no UI automation smoke and no verification that a “full diagnosis” produced a valid report.
+### Current status
+- **Resolved (Packaging smoke test):** CI now executes an end-to-end `WindowsCrashDoctor.exe --self-test` after single-file publishing to verify embedded engine extraction, PowerShell interop, report deserialization, and dump parsing contracts.
+- **Open (Test project & UI automation):** A standalone C# test project (`desktop/WindowsCrashDoctor.Tests`) with automated WPF UI testing and complete mock coverage has not yet been built.
 
-### Required change
-
-Add `desktop/WindowsCrashDoctor.Tests` and end-to-end packaging tests.
-
-### Acceptance criteria
-
-At minimum CI proves:
-
-- settings/history serialization;
-- engine extraction;
-- exact embedded resource inventory;
-- PowerShell command argument escaping;
-- report JSON deserialization;
-- full-diagnosis synthetic fixture;
-- dump-analysis fixture;
-- app starts and creates the main window on a Windows runner;
-- release EXE hash matches published manifest.
+### Acceptance criteria status
+- [x] Packaged EXE extracts embedded engine and executes verified self-tests during CI.
+- [x] Release EXE SHA-256 hash matches published manifest and checksum asset.
+- [ ] Standalone `desktop/WindowsCrashDoctor.Tests` project with mocked service tests (remains open).
+- [ ] Headless/virtual UI automation smoke tests for main WPF windows (remains open).
 
 ## AUD-007 — “Privacy-aware ZIP export” currently overstates the implementation
 
 **Severity:** High  
-**Area:** Privacy / UX truthfulness
+**Area:** Privacy / UX truthfulness  
+**Status:** **OPEN / IN PROGRESS** (October 2026)
 
-The desktop path warns that the bundle can contain sensitive data and then zips the evidence directory. That is **privacy-warning-aware**, not yet privacy-aware export in the stronger sense implied by the README/security design: there is no per-file preview, classification, default exclusion, redaction derivative or broad secret scan.
+### Current status
+- **Resolved (Initial guardrails):** Warning dialog alerts the user to sensitive contents, and `PrivacyExportService.cs` excludes high-risk unscannable files by default.
+- **Open (Structured redaction):** A full interactive file-by-file preview screen, automated PII redaction engine, and complete stripping of raw memory/EVTX dumps before export remain open roadmap items.
 
-### Required change
-
-Until implemented, rename the feature to something like **“Export diagnostic ZIP (review before sharing)”**. Then build the proper workflow:
-
-1. manifest and hashes;
-2. sensitivity classification;
-3. file/field preview;
-4. default exclusion of high-risk raw artefacts;
-5. optional redacted derivative;
-6. secret/PII checks;
-7. explicit final confirmation.
-
-### Acceptance criteria
-
-- User can see every file about to leave the private evidence store.
-- Dumps/EVTX/ETL/raw sensor logs are never silently included in a “safe” support export.
-- Redaction never mutates the original evidence.
+### Acceptance criteria status
+- [x] Warning prompt explicitly alerts users before creating support archives.
+- [x] Original evidence is never modified during export.
+- [ ] File-by-file interactive inclusion/exclusion preview screen (remains open).
+- [ ] Automated regex/NER redaction of usernames, machine SIDs, and IP addresses (remains open).
 
 ## AUD-008 — Release state is mutable and weakly reproducible
 
 **Severity:** High  
-**Area:** Release engineering
+**Area:** Release engineering  
+**Status:** **PARTIALLY RESOLVED** (October 2026)
 
-The rolling desktop release tag is deleted/recreated and points at the latest build. This is fine as an explicit canary convenience, but not as the primary trusted installation identity. App and embedded engine are also hard-coded as `0.1.0`, so materially different builds can present the same version.
+### Current status
+- **Resolved (Canary pipeline):** Rolling `windows-crash-doctor-desktop-latest` canary release is fully automated through GitHub Actions, strictly gated by the Product Gate, and generates a structured `release-manifest.json` containing exact commit SHA, product/engine versions, and component hashes.
+- **Open (Immutable semantic releases):** Tagged immutable releases (e.g. `v0.3.0`) with release signing, provenance attestation, and SBOM remain to be established.
 
-### Required change
-
-Use semantic immutable releases, e.g. `v0.2.0`, with commit SHA, source archive, binary hash, SBOM and build provenance. Keep `desktop-latest` only as a moving alias/canary.
-
-### Acceptance criteria
-
-Every report/history record contains:
-
-- app version;
-- engine version;
-- collector version;
-- rule-set/schema version;
-- source commit SHA;
-- provider versions.
+### Acceptance criteria status
+- [x] Release manifest records product version, engine version, rule-set version, and source commit SHA.
+- [x] Canary release is published only when the unified product gate passes.
+- [ ] Semantic immutable release tags (`v0.3.0`) alongside the rolling canary (remains open).
+- [ ] Build provenance and Software Bill of Materials (SBOM) generation (remains open).
 
 ---
 
