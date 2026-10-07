@@ -243,7 +243,18 @@ class Program {
                         Assert-True ($cdump.ModuleCount -gt 0) 'ModuleCount must be > 0'
                         Assert-True ($null -ne $cdump.ProblemClassification) 'ProblemClassification must be populated'
                         Assert-Equal $cdump.ProblemClassification.Family 'SystemSoftware' 'Family must be SystemSoftware'
-                        Write-Host ('Real WER dump captured and verified: {0} ({1} bytes, code: {2}, modules: {3}, threads: {4})' -f $realDumpFile.Name, $realDumpFile.Length, $cdump.ExceptionCode, $cdump.ModuleCount, $cdump.ThreadCount)
+
+                        # WCD-003/WCD-005 acceptance against an independent Microsoft debugger trace.
+                        $dbgSymbols = Join-Path $temp 'WerDebuggerSymbols'
+                        $debugged = Get-CrashDoctorDumpInfo -Path $realDumpFile.FullName -UseDebugger -SymbolCachePath $dbgSymbols -DebuggerTimeoutSeconds 180
+                        Assert-True $debugged.DebuggerAnalysis.Success 'cdb !analyze/stack analysis must succeed on the real WER crash dump'
+                        Assert-True $debugged.DebuggerAnalysis.IsTrueUnwind 'real WER dump must use genuine DbgEng stack unwinding'
+                        Assert-True ($debugged.CallStacks.Count -gt 0) 'real WER dump must expose debugger-unwound per-thread stacks'
+                        Assert-True ($debugged.DebuggerAnalysis.RawOutput -match '===WCD_ANALYZE_BEGIN===') 'raw !analyze trace marker must be retained'
+                        Assert-True (-not [string]::IsNullOrWhiteSpace([string]$debugged.DebuggerAnalysis.FailureBucket)) 'cdb !analyze -v must provide a failure bucket for the deliberate crash'
+                        Assert-True $debugged.DebuggerAnalysis.SymbolsResolved 'cdb must resolve function symbols on the deliberate crash dump'
+
+                        Write-Host ('Real WER dump captured and debugger-verified: {0} ({1} bytes, code: {2}, modules: {3}, threads: {4}, bucket: {5})' -f $realDumpFile.Name, $realDumpFile.Length, $cdump.ExceptionCode, $cdump.ModuleCount, $cdump.ThreadCount, $debugged.DebuggerAnalysis.FailureBucket)
                     } else {
                         Write-Warning 'Real WER dump was not written within timeout; system WER settings may have suppressed child dump.'
                     }
