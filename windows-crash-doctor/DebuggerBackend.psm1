@@ -83,7 +83,24 @@ function ConvertFrom-CrashDoctorCdbOutput {
             continue
         }
 
-        if ($null -ne $currentStack -and $line -match '^\s*(?<frame>[0-9A-Fa-f]{1,3})\s+(?<sp>[0-9A-Fa-f`]{8,20})\s+(?<ret>[0-9A-Fa-f`]{8,20})\s+(?<site>.+?)\s*
+        if ($null -ne $currentStack -and $line -match '^\\s*(?<frame>[0-9A-Fa-f]{1,3})\\s+(?<sp>[0-9A-Fa-f`]{8,20})\\s+(?<ret>[0-9A-Fa-f`]{8,20})\\s+(?<site>.+?)\\s*$') {
+            # Preserve captures before subsequent -match calls overwrite PowerShell's automatic $Matches table.
+            $frameToken = [string]$Matches['frame']
+            $spToken = [string]$Matches['sp']
+            $retToken = [string]$Matches['ret']
+            $site = ([string]$Matches['site']).Trim()
+
+            if ($site -match '^(?<module>[^!\\s]+)!(?<name>\\S+)') {
+                $frameModule = $Matches['module']
+            } elseif ($site -match '^(?<module>[A-Za-z0-9_.-]+)\\+0x[0-9A-Fa-f]+') {
+                $frameModule = $Matches['module']
+            } else {
+                $frameModule = 'Unknown'
+            }
+
+            $frameNumber = [Convert]::ToInt32($frameToken, 16)
+            $sp = '0x' + ($spToken -replace '`','').ToUpperInvariant()
+            $ret = '0x' + ($retToken -replace '`','').ToUpperInvariant()
             $currentStack.Frames.Add([pscustomobject][ordered]@{
                 FrameNumber        = $frameNumber
                 InstructionPointer = $null
