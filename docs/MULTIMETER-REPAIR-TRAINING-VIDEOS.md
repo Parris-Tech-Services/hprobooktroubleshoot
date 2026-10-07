@@ -14,7 +14,7 @@ The language-evidence standard here is **not** 'English title means English spok
 |---|---|---|---|
 | 1 — basics | [Defpom's Electronics Repair — How to Use a Multimeter](https://www.youtube.com/watch?v=jUAXPTBRxmw) | [Course series explicitly says spoken in English](https://donator.ge/en/courses/c/electronics-for-beginners-series-woiyk8) | Beginner multimeter tutorial |
 | 1 — basics | [LED Projects — Multimeter fundamentals](https://www.youtube.com/watch?v=OD-VMmPyCo4) | English caption text observed in screenshot; audio not independently sampled | Voltage, resistance, continuity |
-| 2 — chargers | [HealMyTech — Test a laptop charger with a multimeter](https://www.youtube.com/watch?v=-jbD2bXtZqU) | English-language UK repair channel; individual audio not directly verified | External adapter DC output |
+| 2 — chargers | [Electronics Repair Basics — Diagnose common laptop motherboard faults](https://www.youtube.com/watch?v=BTSzGiOY8Mo) | [English transcript excerpt](https://glasp.co/youtube/BTSzGiOY8Mo) | Begins with testing the external power adapter, then power jack and charging path |
 | 3 — Lenovo | [Electronics Repair School — Lenovo no power, not charging](https://www.youtube.com/watch?v=j73U2ZnvrBM) | [Class Central lists English](https://www.classcentral.com/course/youtube-lenovo-laptop-no-power-not-charging-let-s-learn-to-diagnose-147582) | Adapter, DC jack, charging, battery |
 | 3 — Acer | [Electronics Repair School — Shorted charging port vs motherboard](https://www.youtube.com/watch?v=W1WJkJQ8D2Q) | [Class Central lists English](https://www.classcentral.com/course/youtube-shorted-charging-port-vs-shorted-motherboard-the-power-supply-is-speaking-with-you-acer-no-power-431269) | Fault isolation and supply behaviour |
 | 3 — desktop | [Britec09 — Manually Test a PC ATX PSU With a Multimeter](https://www.youtube.com/watch?v=ac7YMUcMjbw) | English-language British channel; individual audio not directly verified | Standard ATX output rails; NOT proprietary pinouts |
@@ -40,3 +40,7 @@ The language-evidence standard here is **not** 'English title means English spok
 The first 6-video selection included tutorials whose spoken language had not been established. In response to a clear request for English training, the public site was replaced with the collection above using language classifications and explicit provenance. The original Electro University lesson was removed entirely; its companion article contains an exposed-mains input-probing step unsuitable for this beginner hobby-meter course.
 
 No claim is made that the assistant personally listened to every published lesson, or that every repair step is independently safety-audited.
+
+## Playback correction (8 October 2026)
+
+A previous HealMyTech embed was blocked by its owner and was removed from the live training page. The Electronics Repair Basics video now provides the charger-testing lesson; a published English transcript excerpt supports its language. YouTube embedded playback cannot be independently confirmed through this environment. The training page keeps embeds and provides direct YouTube links and an API-error fallback for blocked players. Do not treat GitHub publication as proof that YouTube playback was tested.
