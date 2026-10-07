@@ -270,19 +270,17 @@ jobs:
           $repo = $env:GITHUB_REPOSITORY
 
           Write-Host "Checking for existing release $tag in $repo..."
-          $null = & gh release view $tag 2>$null
-          if ($LASTEXITCODE -eq 0) {
+          $existingTags = @(& gh release list --limit 100 --json tagName --jq '.[].tagName')
+          if ($existingTags -contains $tag) {
             Write-Host "Deleting existing release $tag..."
             & gh release delete $tag --yes --cleanup-tag
-            if ($LASTEXITCODE -ne 0) {
-              Write-Warning "gh release delete returned exit code $LASTEXITCODE; proceeding..."
-            }
           }
 
-          try {
-            & gh api -X DELETE "repos/$repo/git/refs/tags/$tag" 2>$null
+          $matchingRefs = @(& gh api "repos/$repo/git/matching-refs/tags/$tag" --jq '.[].ref')
+          if ($matchingRefs.Count -gt 0) {
+            Write-Host "Cleaning up orphaned git tag $tag..."
+            & gh api -X DELETE "repos/$repo/git/refs/tags/$tag"
           }
-          catch { }
 
           $manifest = Get-Content .\release\release-manifest.json -Raw | ConvertFrom-Json
           $notes = @(
