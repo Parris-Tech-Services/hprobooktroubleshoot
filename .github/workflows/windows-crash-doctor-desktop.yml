@@ -285,18 +285,18 @@ jobs:
           catch { }
 
           $manifest = Get-Content .\release\release-manifest.json -Raw | ConvertFrom-Json
-          $notes = @"
-**Canary / advanced preview - not a stable release.**
-
-This artifact was published only after the repository product gate passed: PowerShell parsing, PSScriptAnalyzer, snapshot/telemetry/dump/integration regression tests, public-evidence guard, desktop compilation, packaged-engine extraction and an end-to-end ``WindowsCrashDoctor.exe --self-test``.
-
-Source commit: $env:GITHUB_SHA
-Product: $($manifest.productVersion)
-Engine: $($manifest.engineVersion)
-Rule set: $($manifest.ruleSetVersion)
-
-Installers verify SHA-256 before executing/installing downloaded release assets. The executable is still unsigned, so Windows SmartScreen may show **Unknown Publisher**.
-"@
+          $notes = @(
+            '**Canary / advanced preview - not a stable release.**',
+            '',
+            'This artifact was published only after the repository product gate passed: PowerShell parsing, PSScriptAnalyzer, snapshot/telemetry/dump/integration regression tests, public-evidence guard, desktop compilation, packaged-engine extraction and an end-to-end `WindowsCrashDoctor.exe --self-test`.',
+            '',
+            "Source commit: $env:GITHUB_SHA",
+            "Product: $($manifest.productVersion)",
+            "Engine: $($manifest.engineVersion)",
+            "Rule set: $($manifest.ruleSetVersion)",
+            '',
+            'Installers verify SHA-256 before executing/installing downloaded release assets. The executable is still unsigned, so Windows SmartScreen may show **Unknown Publisher**.'
+          ) -join "`n"
 
           $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           [System.IO.File]::WriteAllText($notesFile, $notes, [System.Text.Encoding]::UTF8)
