@@ -238,6 +238,34 @@ function Get-Classification {
     }
 }
 
+function Get-UniqueGroupIpAddresses {
+    param([object[]]$Entries)
+
+    # Group-Object preserves the original ordered dictionaries. Select-Object
+    # -ExpandProperty is not reliable for dictionary keys, even when dot access
+    # (for example, $_.ipAddress) works elsewhere in the script.
+    $addresses = @(
+        foreach ($entry in $Entries) {
+            if ($null -eq $entry) { continue }
+
+            $value = $null
+            if ($entry -is [System.Collections.IDictionary]) {
+                $value = $entry['ipAddress']
+            }
+            else {
+                $property = $entry.PSObject.Properties['ipAddress']
+                if ($null -ne $property) { $value = $property.Value }
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$value)) {
+                [string]$value
+            }
+        }
+    )
+
+    return @($addresses | Sort-Object -Unique)
+}
+
 function Invoke-SelfTest {
     $cases = @(
         @{
@@ -295,6 +323,31 @@ function Invoke-SelfTest {
         if ($result.classification -ne $case.expected) {
             throw "Network Doctor self-test '$($case.name)' failed: expected '$($case.expected)', got '$($result.classification)'."
         }
+    }
+
+    # Regression for a real crash on Windows: grouped [ordered] dictionaries
+    # expose ipAddress as a key, which Select-Object -ExpandProperty cannot
+    # reliably read. Both Event 4199 and ARP checks use this same helper.
+    $neighborSamples = @(
+        [ordered]@{ macAddress = '00-11-22-33-44-55'; ipAddress = '192.0.2.10' },
+        [ordered]@{ macAddress = '00-11-22-33-44-55'; ipAddress = '192.0.2.11' },
+        [ordered]@{ macAddress = '00-11-22-33-44-55'; ipAddress = '192.0.2.11' },
+        [ordered]@{ macAddress = '00-11-22-33-44-55'; ipAddress = '192.0.2.12' },
+        [ordered]@{ macAddress = '66-77-88-99-AA-BB'; ipAddress = '198.51.100.8' }
+    )
+    $groups = @($neighborSamples | Group-Object macAddress)
+    $twoOrMore = @($groups | Where-Object { (@(Get-UniqueGroupIpAddresses -Entries $_.Group)).Count -ge 2 })
+    $threeOrMore = @($groups | Where-Object { (@(Get-UniqueGroupIpAddresses -Entries $_.Group)).Count -ge 3 })
+    if ($twoOrMore.Count -ne 1 -or $threeOrMore.Count -ne 1) {
+        throw 'Network Doctor self-test failed: duplicate-IP / ARP group detection.'
+    }
+    $ipList = @(Get-UniqueGroupIpAddresses -Entries $threeOrMore[0].Group)
+    if ($ipList.Count -ne 3 -or $ipList[0] -ne '192.0.2.10' -or $ipList[2] -ne '192.0.2.12') {
+        throw 'Network Doctor self-test failed: dictionary IP extraction and deduplication.'
+    }
+    $objects = @([pscustomobject]@{ ipAddress = '203.0.113.5' }, [ordered]@{ ipAddress = $null })
+    if (@(Get-UniqueGroupIpAddresses -Entries $objects).Count -ne 1) {
+        throw 'Network Doctor self-test failed: object or null IP handling.'
     }
 
     Write-Output 'Network Doctor self-test passed.'
@@ -615,7 +668,7 @@ if ($duplicateEvents.Count -gt 0) {
             Where-Object { $_.macAddress } |
             Group-Object macAddress |
             Where-Object {
-                (@($_.Group | Select-Object -ExpandProperty ipAddress -Unique)).Count -ge 2
+                (@(Get-UniqueGroupIpAddresses -Entries $_.Group)).Count -ge 2
             } |
             ForEach-Object { $_.Name }
     )
@@ -653,12 +706,12 @@ $neighborMacMultiClaim = @(
     $neighbors |
         Group-Object macAddress |
         Where-Object {
-            (@($_.Group | Select-Object -ExpandProperty ipAddress -Unique)).Count -ge 3
+            (@(Get-UniqueGroupIpAddresses -Entries $_.Group)).Count -ge 3
         } |
         ForEach-Object {
             [ordered]@{
                 macAddress = $_.Name
-                ipAddresses = @($_.Group | Select-Object -ExpandProperty ipAddress -Unique)
+                ipAddresses = @(Get-UniqueGroupIpAddresses -Entries $_.Group)
             }
         }
 )
