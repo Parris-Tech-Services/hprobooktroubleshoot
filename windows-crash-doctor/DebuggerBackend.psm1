@@ -40,7 +40,7 @@ function ConvertFrom-CrashDoctorCdbOutput {
     $moduleName = $null
     $imageName = $null
     $exceptionCode = $null
-    $threadStacks = New-Object System.Collections.Generic.List[object]
+    $threadStacks = @()
     $currentStack = $null
 
     foreach ($line in ($Output -split "`r?`n")) {
@@ -66,62 +66,60 @@ function ConvertFrom-CrashDoctorCdbOutput {
         }
 
         if ($line -match '^\s*(?<current>\.)?\s*(?<index>\d+)\s+Id:\s+(?<pid>[0-9A-Fa-f]+)\.(?<tid>[0-9A-Fa-f]+)') {
-            $tid = [Convert]::ToUInt32($Matches['tid'], 16)
+            $currentToken = [string]$Matches['current']
+            $indexToken = [string]$Matches['index']
+            $tidToken = [string]$Matches['tid']
             $currentStack = [pscustomobject][ordered]@{
-                ThreadIndex      = [int]$Matches['index']
-                ThreadId         = $tid
-                IsFaultingThread = [bool]($Matches['current'] -eq '.')
-                Rank             = if ($Matches['current'] -eq '.') { 1 } else { 2 }
-                Tag              = if ($Matches['current'] -eq '.') { 'DEBUGGER_CURRENT_THREAD' } else { 'DEBUGGER_THREAD' }
+                ThreadIndex      = [int]$indexToken
+                ThreadId         = [Convert]::ToUInt32($tidToken, 16)
+                IsFaultingThread = [bool]($currentToken -eq '.')
+                Rank             = if ($currentToken -eq '.') { 1 } else { 2 }
+                Tag              = if ($currentToken -eq '.') { 'DEBUGGER_CURRENT_THREAD' } else { 'DEBUGGER_THREAD' }
                 FrameCount       = 0
                 TopFrame         = 'NoFrames'
                 Method           = 'Cdb/DbgEng'
                 IsTrueUnwind     = $true
-                Frames           = New-Object System.Collections.Generic.List[object]
+                Frames           = @()
             }
-            $threadStacks.Add($currentStack)
+            $threadStacks += $currentStack
             continue
         }
 
         if ($null -ne $currentStack -and $line -match '^\s*(?<frame>[0-9A-Fa-f]{1,3})\s+(?<sp>[0-9A-Fa-f`]{8,20})\s+(?<ret>[0-9A-Fa-f`]{8,20})\s+(?<site>.+?)\s*$') {
-            # Preserve captures before subsequent -match calls overwrite PowerShell's automatic $Matches table.
             $frameToken = [string]$Matches['frame']
             $spToken = [string]$Matches['sp']
             $retToken = [string]$Matches['ret']
             $site = ([string]$Matches['site']).Trim()
 
             if ($site -match '^(?<module>[^!\s]+)!(?<name>\S+)') {
-                $frameModule = $Matches['module']
+                $frameModule = [string]$Matches['module']
             } elseif ($site -match '^(?<module>[A-Za-z0-9_.-]+)\+0x[0-9A-Fa-f]+') {
-                $frameModule = $Matches['module']
+                $frameModule = [string]$Matches['module']
             } else {
                 $frameModule = 'Unknown'
             }
 
-            $frameNumber = [Convert]::ToInt32($frameToken, 16)
-            $sp = '0x' + ($spToken -replace '`','').ToUpperInvariant()
-            $ret = '0x' + ($retToken -replace '`','').ToUpperInvariant()
-            $currentStack.Frames.Add([pscustomobject][ordered]@{
-                FrameNumber        = $frameNumber
+            $frame = [pscustomobject][ordered]@{
+                FrameNumber        = [Convert]::ToInt32($frameToken, 16)
                 InstructionPointer = $null
-                StackPointer       = $sp
+                StackPointer       = '0x' + ($spToken -replace '`','').ToUpperInvariant()
                 FramePointer       = $null
                 ModuleName         = $frameModule
                 Offset             = $null
                 Symbol             = $site
-                ReturnAddress      = $ret
+                ReturnAddress      = '0x' + ($retToken -replace '`','').ToUpperInvariant()
                 SymbolSource       = 'DbgEng'
                 IsTrueUnwind       = $true
-            })
+            }
+            $currentStack.Frames += $frame
         }
     }
 
     foreach ($stack in $threadStacks) {
-        $stack.FrameCount = $stack.Frames.Count
+        $stack.FrameCount = @($stack.Frames).Count
         if ($stack.FrameCount -gt 0) {
             $stack.TopFrame = [string]$stack.Frames[0].Symbol
         }
-        $stack.Frames = @($stack.Frames)
     }
 
     return [pscustomobject][ordered]@{
