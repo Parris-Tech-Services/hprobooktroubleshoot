@@ -19,6 +19,7 @@ public sealed class ToolkitDefinition
     public string[] Executables { get; set; } = [];
     public string[] Arguments { get; set; } = [];
     public string? ProviderId { get; set; }
+    public string? PackageId { get; set; }
     public string? ConsoleHint { get; set; }
     public List<ToolkitAction> Actions { get; set; } = [];
 }

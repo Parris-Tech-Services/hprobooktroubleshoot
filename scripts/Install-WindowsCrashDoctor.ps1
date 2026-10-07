@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $tag = 'windows-crash-doctor-desktop-latest'
-$repo = 'joshualparris/hprobooktroubleshoot'
+$repo = 'Parris-Tech-Services/hprobooktroubleshoot'
 $apiUrl = "https://api.github.com/repos/$repo/releases/tags/$tag"
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('WindowsCrashDoctorInstall-' + [guid]::NewGuid().ToString('N'))
 $zipPath = Join-Path $tempRoot 'WindowsCrashDoctor-Engine.zip'

@@ -24,7 +24,8 @@
                 <Button x:Name="DumpButton" Content="Open dump in debugger…" Padding="10,6" Margin="0,0,8,8" Click="Dump_Click" Visibility="Collapsed"/>
                 <Button x:Name="LocateButton" Content="Locate executable…" Padding="10,6" Margin="0,0,8,8" Click="Locate_Click"/>
                 <Button x:Name="WebsiteButton" Content="Official website / instructions" Padding="10,6" Margin="0,0,8,8" Click="Website_Click"/>
-                <Button x:Name="InstallButton" Content="Install verified provider" Padding="10,6" Margin="0,0,8,8" Click="Install_Click"/>
+                <Button x:Name="InstallButton" Content="Download &amp; Install" Padding="10,6" Margin="0,0,8,8" Click="Install_Click"
+                        ToolTip="Install the selected app. Accepts its package terms; Windows may request administrator approval."/>
                 <Button x:Name="ImportButton" Content="Attach report…" Padding="10,6" Margin="0,0,8,8" Click="Import_Click"/>
                 <Button Content="Open evidence" Padding="10,6" Margin="0,0,8,8" Click="Evidence_Click"/>
                 <Button x:Name="ExportButton" Content="Privacy-reviewed export…" Padding="10,6" Margin="0,0,8,8" Click="Export_Click"/>

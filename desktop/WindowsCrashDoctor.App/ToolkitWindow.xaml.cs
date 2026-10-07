@@ -38,6 +38,7 @@ public partial class ToolkitWindow : Window
         if (_refreshing) return;
         _refreshing = true;
         RefreshButton.IsEnabled = false;
+        UpdateButtons();
         try
         {
             StatusText.Text = "Checking installed executables and package locations…";
@@ -46,7 +47,7 @@ public partial class ToolkitWindow : Window
             StatusText.Text = $"{_toolkit.Tools.Count} tools • {_toolkit.Tools.Count(x => x.Executable is not null)} detected. Availability does not confirm commercial licensing.";
         }
         catch (Exception ex) { ShowError(ex); }
-        finally { _refreshing = false; RefreshButton.IsEnabled = true; }
+        finally { _refreshing = false; RefreshButton.IsEnabled = true; UpdateButtons(); }
     }
 
     private void Filter_Changed(object sender, RoutedEventArgs e)
@@ -90,12 +91,14 @@ public partial class ToolkitWindow : Window
     private void UpdateButtons()
     {
         var idle = _operation is null;
-        OpenButton.IsEnabled = idle && Selected?.Executable is not null;
-        LocateButton.IsEnabled = idle && Selected is not null;
+        OpenButton.IsEnabled = idle && !_refreshing && Selected?.Executable is not null;
+        LocateButton.IsEnabled = idle && !_refreshing && Selected is not null;
         WebsiteButton.IsEnabled = Selected is not null;
         ImportButton.IsEnabled = idle && Selected is not null;
-        InstallButton.IsEnabled = idle && Selected?.Definition.ProviderId is not null;
-        InstallButton.Visibility = Selected?.Definition.ProviderId is null ? Visibility.Collapsed : Visibility.Visible;
+        var installable = Selected?.Definition.PackageId is not null || Selected?.Definition.ProviderId is not null;
+        InstallButton.Visibility = Visibility.Visible;
+        InstallButton.Content = Selected?.Executable is not null ? "Installed" : installable ? "Download & Install" : "Manual setup required";
+        InstallButton.IsEnabled = idle && !_refreshing && Selected?.Executable is null && installable;
         DumpButton.Visibility = Selected?.Name == "WinDbg / cdb" ? Visibility.Visible : Visibility.Collapsed;
         DumpButton.IsEnabled = idle && Selected?.Executable is not null;
         RunButton.IsEnabled = idle && ActionBox.SelectedItem is ToolkitAction;
@@ -161,16 +164,29 @@ public partial class ToolkitWindow : Window
 
     private async void Install_Click(object sender, RoutedEventArgs e)
     {
-        if (Selected is not { } tool || tool.Definition.ProviderId is not { } provider || _operation is not null) return;
+        if (Selected is not { } tool || _operation is not null || _refreshing || tool.Executable is not null) return;
+        if (tool.Definition.PackageId is null && tool.Definition.ProviderId is null) return;
         _operation = new(); UpdateButtons();
+        OutputBox.Clear();
         try
         {
-            _engine.EnsureExtracted();
-            var result = await _runner.RunFileAsync(_engine.IntegrationManagerPath, ["-Action", "install", "-Id", provider], Log,
-                _operation.Token, new ProcessRunOptions(TimeSpan.FromMinutes(3), OperationId: "toolkit.install." + provider));
-            StatusText.Text = result.Succeeded ? "Verified provider installation completed." : $"Installation {result.Status}: {result.FailureReason}";
+            StatusText.Text = $"Downloading and installing {tool.Name}… Windows may request administrator approval.";
+            Log($"Installing {tool.Name}. {tool.Note}");
+            ProcessResult result;
+            if (tool.Definition.PackageId is not null)
+                result = await ToolkitInstaller.InstallAsync(tool, _runner, Log, _operation.Token);
+            else
+            {
+                _engine.EnsureExtracted();
+                result = await _runner.RunFileAsync(_engine.IntegrationManagerPath, ["-Action", "install", "-Id", tool.Definition.ProviderId!], Log,
+                    _operation.Token, new ProcessRunOptions(TimeSpan.FromMinutes(3), OperationId: "toolkit.install." + tool.Definition.ProviderId));
+            }
             await RefreshAsync();
+            StatusText.Text = result.Succeeded
+                ? tool.Executable is not null ? $"{tool.Name} installed and ready to open." : $"Installer completed for {tool.Name}; executable not detected. Use Locate executable or official instructions."
+                : $"{tool.Name} installation {result.Status} (exit {result.ExitCode}). {result.FailureReason} See output below; retry or use official instructions.";
         }
+        catch (OperationCanceledException) { StatusText.Text = "Installation cancelled. A started installer may have made changes; detection will refresh on the next check."; }
         catch (Exception ex) { ShowError(ex); }
         finally { FinishOperation(); }
     }

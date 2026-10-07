@@ -1,0 +1,276 @@
+{
+  "checkedAtUtc": "2026-10-07T00:31:45.053431+00:00",
+  "method": "winget show --id <id> --exact --source winget --disable-interactivity",
+  "packages": [
+    {
+      "name": "BleachBit",
+      "id": "BleachBit.BleachBit",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "WizTree",
+      "id": "AntibodySoftware.WizTree",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "WinDirStat",
+      "id": "WinDirStat.WinDirStat",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "LatencyMon",
+      "id": "Resplendence.LatencyMon",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "CPU-Z",
+      "id": "CPUID.CPU-Z",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "GPU-Z",
+      "id": "TechPowerUp.GPU-Z",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "HWMonitor",
+      "id": "CPUID.HWMonitor",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "HWiNFO64",
+      "id": "REALiX.HWiNFO",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Core Temp",
+      "id": "ALCPU.CoreTemp",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "MSI Afterburner",
+      "id": "Guru3D.Afterburner",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "BatteryInfoView",
+      "id": "NirSoft.BatteryInfoView",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "CrystalDiskMark",
+      "id": "CrystalDewWorld.CrystalDiskMark",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "CrystalDiskInfo",
+      "id": "CrystalDewWorld.CrystalDiskInfo",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "smartmontools",
+      "id": "smartmontools.smartmontools",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "GSmartControl",
+      "id": "AlexanderShaduri.GSmartControl",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Rufus",
+      "id": "Rufus.Rufus",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Ventoy",
+      "id": "Ventoy.Ventoy",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Sysinternals Suite",
+      "id": "Microsoft.Sysinternals.Suite",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Process Explorer",
+      "id": "Microsoft.Sysinternals.ProcessExplorer",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Autoruns",
+      "id": "Microsoft.Sysinternals.Autoruns",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Process Monitor (Procmon)",
+      "id": "Microsoft.Sysinternals.ProcessMonitor",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "TCPView",
+      "id": "Microsoft.Sysinternals.TCPView",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "RAMMap",
+      "id": "Microsoft.Sysinternals.RAMMap",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "BgInfo",
+      "id": "Microsoft.Sysinternals.BGInfo",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "VMMap",
+      "id": "Microsoft.Sysinternals.VMMap",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "DebugView",
+      "id": "Microsoft.Sysinternals.DebugView",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "WinDbg / cdb",
+      "id": "Microsoft.WinDbg",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "BlueScreenView",
+      "id": "NirSoft.BlueScreenView",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Wireshark",
+      "id": "WiresharkFoundation.Wireshark",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Nmap / Zenmap",
+      "id": "Insecure.Nmap",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Advanced IP Scanner",
+      "id": "Famatech.AdvancedIPScanner",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Angry IP Scanner",
+      "id": "angryziber.AngryIPScanner",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "PuTTY",
+      "id": "PuTTY.PuTTY",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Tera Term",
+      "id": "TeraTermProject.teraterm",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "MobaXterm",
+      "id": "Mobatek.MobaXterm",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "AnyDesk",
+      "id": "AnyDesk.AnyDesk",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Malwarebytes",
+      "id": "Malwarebytes.Malwarebytes",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "AdwCleaner",
+      "id": "Malwarebytes.AdwCleaner",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Revo Uninstaller",
+      "id": "RevoUninstaller.RevoUninstaller",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Geek Uninstaller",
+      "id": "GeekUninstaller.GeekUninstaller",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "O&O ShutUp10++",
+      "id": "OO-Software.ShutUp10",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "Everything",
+      "id": "voidtools.Everything",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "USBDeview",
+      "id": "NirSoft.USBDeview",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "ShellExView",
+      "id": "NirSoft.ShellExView",
+      "exit": 0,
+      "found": true
+    },
+    {
+      "name": "AppCrashView",
+      "id": "NirSoft.AppCrashView",
+      "exit": 0,
+      "found": true
+    }
+  ]
+}

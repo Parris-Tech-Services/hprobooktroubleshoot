@@ -385,7 +385,8 @@
       "bleachbit.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "BleachBit.BleachBit"
   },
   "WizTree": {
     "executables": [
@@ -394,7 +395,8 @@
       "WizTree.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "AntibodySoftware.WizTree"
   },
   "WinDirStat": {
     "executables": [
@@ -402,7 +404,8 @@
       "windirstat.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "WinDirStat.WinDirStat"
   },
   "Windows Performance Toolkit (WPT)": {
     "executables": [
@@ -454,7 +457,8 @@
       "LatMon.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Resplendence.LatencyMon"
   },
   "CPU-Z": {
     "executables": [
@@ -463,14 +467,16 @@
       "cpuz_x64.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "CPUID.CPU-Z"
   },
   "GPU-Z": {
     "executables": [
       "GPU-Z.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "TechPowerUp.GPU-Z"
   },
   "HWMonitor": {
     "executables": [
@@ -478,7 +484,8 @@
       "HWMonitor.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "CPUID.HWMonitor"
   },
   "LibreHardwareMonitor": {
     "executables": [
@@ -503,7 +510,8 @@
       "HWiNFO64.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "REALiX.HWiNFO"
   },
   "Core Temp": {
     "executables": [
@@ -511,7 +519,8 @@
       "Core Temp.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "ALCPU.CoreTemp"
   },
   "MSI Afterburner": {
     "executables": [
@@ -519,14 +528,16 @@
       "MSIAfterburner.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Guru3D.Afterburner"
   },
   "BatteryInfoView": {
     "executables": [
       "BatteryInfoView.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "NirSoft.BatteryInfoView"
   },
   "powercfg /batteryreport": {
     "executables": [
@@ -592,7 +603,8 @@
       "DiskMark.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "CrystalDewWorld.CrystalDiskMark"
   },
   "CrystalMark 3D25": {
     "executables": [
@@ -647,7 +659,8 @@
       "DiskInfo.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "CrystalDewWorld.CrystalDiskInfo"
   },
   "smartmontools": {
     "executables": [
@@ -666,7 +679,8 @@
         "timeoutSeconds": 60
       }
     ],
-    "providerId": "smartmontools"
+    "providerId": "smartmontools",
+    "packageId": "smartmontools.smartmontools"
   },
   "GSmartControl": {
     "executables": [
@@ -674,7 +688,8 @@
       "gsmartcontrol.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "AlexanderShaduri.GSmartControl"
   },
   "HDDScan": {
     "executables": [
@@ -854,12 +869,14 @@
       "rufus.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Rufus.Rufus"
   },
   "Ventoy": {
     "executables": [],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Ventoy.Ventoy"
   },
   "Hiren's BootCD PE": {
     "executables": [],
@@ -960,7 +977,8 @@
       "procexp.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.Suite"
   },
   "Process Explorer": {
     "executables": [
@@ -968,7 +986,8 @@
       "procexp.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.ProcessExplorer"
   },
   "Autoruns": {
     "executables": [
@@ -976,7 +995,8 @@
       "Autoruns.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.Autoruns"
   },
   "Process Monitor (Procmon)": {
     "executables": [
@@ -984,7 +1004,8 @@
       "Procmon.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.ProcessMonitor"
   },
   "PsTools": {
     "executables": [
@@ -1012,7 +1033,8 @@
       "tcpview.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.TCPView"
   },
   "RAMMap": {
     "executables": [
@@ -1020,7 +1042,8 @@
       "RAMMap.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.RAMMap"
   },
   "Sigcheck": {
     "executables": [
@@ -1038,7 +1061,8 @@
       "Bginfo.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.BGInfo"
   },
   "Sysmon": {
     "executables": [
@@ -1056,7 +1080,8 @@
       "VMMap.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.VMMap"
   },
   "Coreinfo": {
     "executables": [
@@ -1104,7 +1129,8 @@
       "Dbgview.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Microsoft.Sysinternals.DebugView"
   },
   "PsInfo": {
     "executables": [
@@ -1158,14 +1184,16 @@
         "requiresAdmin": false,
         "timeoutSeconds": 45
       }
-    ]
+    ],
+    "packageId": "Microsoft.WinDbg"
   },
   "BlueScreenView": {
     "executables": [
       "BlueScreenView.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "NirSoft.BlueScreenView"
   },
   "WhoCrashed": {
     "executables": [
@@ -1334,7 +1362,8 @@
       "Wireshark.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "WiresharkFoundation.Wireshark"
   },
   "Nmap / Zenmap": {
     "executables": [
@@ -1343,7 +1372,8 @@
       "nmap.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Insecure.Nmap"
   },
   "Advanced IP Scanner": {
     "executables": [
@@ -1351,7 +1381,8 @@
       "advanced_ip_scanner.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Famatech.AdvancedIPScanner"
   },
   "Angry IP Scanner": {
     "executables": [
@@ -1359,7 +1390,8 @@
       "ipscan.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "angryziber.AngryIPScanner"
   },
   "PingPlotter": {
     "executables": [
@@ -1605,7 +1637,8 @@
       "putty.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "PuTTY.PuTTY"
   },
   "Tera Term": {
     "executables": [
@@ -1613,7 +1646,8 @@
       "ttermpro.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "TeraTermProject.teraterm"
   },
   "MobaXterm": {
     "executables": [
@@ -1621,7 +1655,8 @@
       "MobaXterm.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Mobatek.MobaXterm"
   },
   "MeshCentral": {
     "executables": [],
@@ -1642,7 +1677,8 @@
       "AnyDesk.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "AnyDesk.AnyDesk"
   },
   "Quick Assist": {
     "executables": [
@@ -1872,14 +1908,16 @@
       "mbam.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Malwarebytes.Malwarebytes"
   },
   "AdwCleaner": {
     "executables": [
       "adwcleaner.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "Malwarebytes.AdwCleaner"
   },
   "Kaspersky Virus Removal Tool": {
     "executables": [
@@ -2133,21 +2171,24 @@
       "Revouninstaller.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "RevoUninstaller.RevoUninstaller"
   },
   "Geek Uninstaller": {
     "executables": [
       "geek.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "GeekUninstaller.GeekUninstaller"
   },
   "O&O ShutUp10++": {
     "executables": [
       "OOSU10.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "OO-Software.ShutUp10"
   },
   "WinGet": {
     "executables": [
@@ -2193,7 +2234,8 @@
       "Everything.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "voidtools.Everything"
   },
   "NirLauncher": {
     "executables": [
@@ -2207,7 +2249,8 @@
       "USBDeview.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "NirSoft.USBDeview"
   },
   "DriverView": {
     "executables": [
@@ -2228,13 +2271,15 @@
       "shexview.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "NirSoft.ShellExView"
   },
   "AppCrashView": {
     "executables": [
       "AppCrashView.exe"
     ],
     "arguments": [],
-    "actions": []
+    "actions": [],
+    "packageId": "NirSoft.AppCrashView"
   }
 }

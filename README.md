@@ -33,7 +33,7 @@ The desktop preview includes:
 
 The rolling desktop preview release is built by GitHub Actions:
 
-**[Download WindowsCrashDoctor.exe](https://github.com/joshualparris/hprobooktroubleshoot/releases/download/windows-crash-doctor-desktop-latest/WindowsCrashDoctor.exe)**
+**[Download WindowsCrashDoctor.exe](https://github.com/Parris-Tech-Services/hprobooktroubleshoot/releases/download/windows-crash-doctor-desktop-latest/WindowsCrashDoctor.exe)**
 
 The EXE is currently unsigned, so Windows SmartScreen may show **Unknown Publisher**. A SHA-256 file is published beside the EXE for manual verification. The current GUI installer does **not yet verify that checksum automatically**; this is a P0 audit finding rather than a completed trust feature.
 

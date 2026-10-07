@@ -203,6 +203,39 @@ action('LibreHardwareMonitor','Capture current hardware sensors',"Import-Module 
 action('smartmontools','List SMART-capable devices',"smartctl.exe --scan-open",admin=True,timeout=60)
 action('pathping','Trace route and loss to Microsoft',"pathping.exe -q 10 -p 100 www.microsoft.com",timeout=120)
 
+# Exact IDs only: never install a fuzzy search match. WinGet verifies manifest hashes.
+packages = {
+    'WinDbg / cdb': 'Microsoft.WinDbg', 'CPU-Z': 'CPUID.CPU-Z',
+    'GPU-Z': 'TechPowerUp.GPU-Z', 'HWMonitor': 'CPUID.HWMonitor',
+    'HWiNFO64': 'REALiX.HWiNFO', 'Core Temp': 'ALCPU.CoreTemp',
+    'MSI Afterburner': 'Guru3D.Afterburner', 'LatencyMon': 'Resplendence.LatencyMon',
+    'CrystalDiskInfo': 'CrystalDewWorld.CrystalDiskInfo',
+    'CrystalDiskMark': 'CrystalDewWorld.CrystalDiskMark',
+    'smartmontools': 'smartmontools.smartmontools', 'GSmartControl': 'AlexanderShaduri.GSmartControl',
+    'BleachBit': 'BleachBit.BleachBit', 'WinDirStat': 'WinDirStat.WinDirStat',
+    'WizTree': 'AntibodySoftware.WizTree', 'Rufus': 'Rufus.Rufus',
+    'Ventoy': 'Ventoy.Ventoy', 'Wireshark': 'WiresharkFoundation.Wireshark',
+    'Nmap / Zenmap': 'Insecure.Nmap', 'Angry IP Scanner': 'angryziber.AngryIPScanner',
+    'Advanced IP Scanner': 'Famatech.AdvancedIPScanner',
+    'PuTTY': 'PuTTY.PuTTY', 'Tera Term': 'TeraTermProject.teraterm',
+    'MobaXterm': 'Mobatek.MobaXterm', 'AnyDesk': 'AnyDesk.AnyDesk', 'Everything': 'voidtools.Everything',
+    'Revo Uninstaller': 'RevoUninstaller.RevoUninstaller',
+    'Geek Uninstaller': 'GeekUninstaller.GeekUninstaller',
+    'O&O ShutUp10++': 'OO-Software.ShutUp10', 'Malwarebytes': 'Malwarebytes.Malwarebytes',
+    'AdwCleaner': 'Malwarebytes.AdwCleaner', 'BlueScreenView': 'NirSoft.BlueScreenView',
+    'BatteryInfoView': 'NirSoft.BatteryInfoView', 'USBDeview': 'NirSoft.USBDeview',
+    'ShellExView': 'NirSoft.ShellExView', 'AppCrashView': 'NirSoft.AppCrashView',
+    'Sysinternals Suite': 'Microsoft.Sysinternals.Suite',
+    'Process Explorer': 'Microsoft.Sysinternals.ProcessExplorer',
+    'Autoruns': 'Microsoft.Sysinternals.Autoruns',
+    'Process Monitor (Procmon)': 'Microsoft.Sysinternals.ProcessMonitor',
+    'TCPView': 'Microsoft.Sysinternals.TCPView', 'RAMMap': 'Microsoft.Sysinternals.RAMMap',
+    'BgInfo': 'Microsoft.Sysinternals.BGInfo',
+    'VMMap': 'Microsoft.Sysinternals.VMMap', 'DebugView': 'Microsoft.Sysinternals.DebugView',
+}
+for name, package in packages.items():
+    definitions[name]['packageId'] = package
+
 destination=ROOT/'windows-crash-doctor/integrations/toolkit-actions.json'
 destination.write_text(json.dumps(definitions,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
 print(f'{len(definitions)} tool definitions; {sum(bool(d["executables"]) for d in definitions.values())} launch mappings; {sum(len(d["actions"]) for d in definitions.values())} diagnostic/action recipes.')

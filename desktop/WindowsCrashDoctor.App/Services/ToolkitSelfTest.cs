@@ -20,6 +20,13 @@ public static class ToolkitSelfTest
         var action = new ToolkitAction { Name = "Read-only fixture", Command = "Write-Output 'toolkit-capture-ok'" };
         fixture.Definition.Actions.Add(action);
         var runner = new PowerShellRunner();
+        if (service.Tools.Count(t => t.Definition.PackageId is not null) < 35)
+            throw new InvalidOperationException("Automatic installation catalog did not load.");
+        foreach (var supported in service.Tools.Where(t => t.Definition.PackageId is not null))
+            _ = ToolkitInstaller.BuildInstallCommand(supported);
+        var malicious = new ToolkitTool { Definition = new ToolkitDefinition { PackageId = "bad'; Write-Output injected; '" } };
+        Expect<InvalidDataException>(() => ToolkitInstaller.BuildInstallCommand(malicious));
+        Expect<InvalidDataException>(() => ToolkitInstaller.BuildInstallCommand(fixture));
         var success = service.RunReadOnlyAsync(fixture, action, root, runner, null, CancellationToken.None).GetAwaiter().GetResult();
         if (!success.Result.Succeeded || !File.ReadAllText(Path.Combine(success.Directory, "output.txt")).Contains("toolkit-capture-ok"))
             throw new InvalidOperationException("Toolkit action output was not captured.");

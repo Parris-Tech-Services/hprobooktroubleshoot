@@ -239,17 +239,34 @@ public sealed class ToolkitService
             {
                 using var entry = uninstall.OpenSubKey(name);
                 if (entry?.GetValue("InstallLocation") is string location && Directory.Exists(location)) paths.Add(location);
+                if (entry?.GetValue("DisplayIcon") is string icon)
+                {
+                    var executable = icon.Split(',')[0].Trim('"');
+                    if (Path.IsPathFullyQualified(executable) && File.Exists(executable))
+                        paths.Add(Path.GetDirectoryName(executable)!);
+                }
             }
         }
-        return paths.Take(1000).ToList();
+        foreach (var root in new[] {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WinGet", "Packages"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WinGet", "Packages") })
+        {
+            if (!Directory.Exists(root)) continue;
+            foreach (var directory in Directory.EnumerateDirectories(root).Take(1000)) paths.Add(directory);
+        }
+        return paths.Take(2000).ToList();
     }
 
     private static string? FindExecutable(IEnumerable<string> names, List<string> installedDirectories)
     {
         var roots = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
+            .Concat((Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "").Split(Path.PathSeparator))
+            .Concat((Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "").Split(Path.PathSeparator))
             .Concat(installedDirectories)
             .Concat(new[] { Environment.GetFolderPath(Environment.SpecialFolder.System), Environment.GetFolderPath(Environment.SpecialFolder.Windows),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WinGet", "Links"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WinGet", "Links"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WindowsCrashDoctor", "Tools"),
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) })
             .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();

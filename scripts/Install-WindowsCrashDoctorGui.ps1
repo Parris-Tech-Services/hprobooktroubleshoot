@@ -6,7 +6,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $tag = 'windows-crash-doctor-desktop-latest'
-$repo = 'joshualparris/hprobooktroubleshoot'
+$repo = 'Parris-Tech-Services/hprobooktroubleshoot'
 $apiUrl = "https://api.github.com/repos/$repo/releases/tags/$tag"
 $installRoot = Join-Path $env:LOCALAPPDATA 'WindowsCrashDoctor\app'
 $exePath = Join-Path $installRoot 'WindowsCrashDoctor.exe'
