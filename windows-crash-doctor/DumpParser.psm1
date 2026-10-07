@@ -1480,16 +1480,16 @@ function Get-CrashDoctorDumpInfo {
         }
 
         $debugger = Invoke-CrashDoctorDebuggerAnalysis -DumpPath $resolved -SymbolCachePath $SymbolCachePath -TimeoutSeconds $DebuggerTimeoutSeconds
-        $report.DebuggerAnalysis = $debugger
+        $report | Add-Member -NotePropertyName DebuggerAnalysis -NotePropertyValue $debugger -Force
         if ($debugger.Success -and $debugger.IsTrueUnwind) {
-            $report.CallStacks = @($debugger.CallStacks)
-            $report.CallStackMethod = 'Cdb/DbgEng'
-            $report.TrueUnwindAvailable = $true
+            $report | Add-Member -NotePropertyName CallStacks -NotePropertyValue @($debugger.CallStacks) -Force
+            $report | Add-Member -NotePropertyName CallStackMethod -NotePropertyValue 'Cdb/DbgEng' -Force
+            $report | Add-Member -NotePropertyName TrueUnwindAvailable -NotePropertyValue $true -Force
             $faulting = @($debugger.CallStacks | Where-Object { $_.IsFaultingThread } | Select-Object -First 1)
             if ($faulting.Count -eq 0 -and $debugger.CallStacks.Count -gt 0) {
                 $faulting = @($debugger.CallStacks[0])
             }
-            $report.FaultingCallStack = if ($faulting.Count -gt 0) { $faulting[0] } else { $null }
+            $report | Add-Member -NotePropertyName FaultingCallStack -NotePropertyValue $(if ($faulting.Count -gt 0) { $faulting[0] } else { $null }) -Force
 
             if ($report.PSObject.Properties.Name -contains 'BugCheckAnalysis' -and $report.BugCheckAnalysis -and $debugger.FailureBucket) {
                 $report.BugCheckAnalysis.FailureBucket = $debugger.FailureBucket
