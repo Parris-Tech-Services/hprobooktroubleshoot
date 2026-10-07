@@ -84,12 +84,12 @@ function Test-HttpsTarget {
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
     if ($curl) {
         try {
-            $args = @('-sS','-I','--max-time','8','-o','NUL','-w','%{http_code}')
-            if ($Family -eq 'IPv4') { $args += '-4' }
-            if ($Family -eq 'IPv6') { $args += '-6' }
-            $args += $Url
+            $curlArgs = @(-sS','-I','--max-time','8','-o','NUL','-w','%{http_code}')
+            if ($Family -eq 'IPv4') { $curlArgs += '-4' }
+            if ($Family -eq 'IPv6') { $curlArgs += '-6' }
+            $curlArgs += $Url
 
-            $output = & $curl.Source @args 2>&1
+            $output = & $curl.Source @curlArgs 2>&1
             $exitCode = $LASTEXITCODE
             $text = ($output | Out-String).Trim()
             $match = [regex]::Match($text, '(?<code>\d{3})\s*$')
@@ -519,12 +519,12 @@ if ($loopbackDns.Count -gt 0) {
         $listenerPids += $endpoint.OwningProcess
     }
 
-    foreach ($pid in @($listenerPids | Sort-Object -Unique)) {
-        $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
-        $svc = $allServices | Where-Object { $_.ProcessId -eq $pid } | Select-Object -First 1
+    foreach ($ownerPid in @($listenerPids | Sort-Object -Unique)) {
+        $proc = Get-Process -Id $ownerPid -ErrorAction SilentlyContinue
+        $svc = $allServices | Where-Object { $_.ProcessId -eq $ownerPid } | Select-Object -First 1
 
         $dnsListeners += [ordered]@{
-            pid = $pid
+            pid = $ownerPid
             process = if ($proc) { $proc.ProcessName } else { $null }
             service = if ($svc) { $svc.Name } else { $null }
             serviceDisplayName = if ($svc) { $svc.DisplayName } else { $null }
@@ -882,13 +882,13 @@ catch { }
 
 $winsockProviders = @()
 if ($winsockCatalog) {
-    $matches = [regex]::Matches(
+    $catalogMatches = [regex]::Matches(
         $winsockCatalog,
         '(?im)^\s*(?:Catalog Entry|Protocol|Provider Path|Description).*?$'
     )
 
     $winsockProviders = @(
-        $matches |
+        $catalogMatches |
             ForEach-Object { $_.Value.Trim() } |
             Select-Object -First 120
     )
