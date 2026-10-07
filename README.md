@@ -17,6 +17,7 @@ The desktop preview includes:
 
 - a polished dashboard with live CPU/RAM/temperature cards;
 - one-click **Run Full Diagnosis**;
+- one-click **Network Doctor** for DHCP/APIPA, duplicate IP, DNS, HTTPS, Wi-Fi authentication, proxy/filter and browser-vs-network triage;
 - ranked evidence cards with severity and recommended next action;
 - live diagnostic progress and logs;
 - optional 30-minute LibreHardwareMonitor deep sensor capture; normalization of that JSONL capture into the snapshot telemetry rules is still being integrated;
@@ -49,7 +50,7 @@ For a one-click preview install that creates a Desktop shortcut, download and do
 - synthetic Windows regression tests and PowerShell QA;
 - public-evidence/BitLocker recovery-key guard;
 - command-line launcher/install path;
-- native WPF desktop GUI and automated preview EXE release pipeline;
+- native WPF desktop GUI with Network Doctor and automated preview EXE release pipeline;
 - documented HP ProBook evidence and controlled test plan.
 
 The **[repository engineering audit](docs/REPOSITORY_AUDIT.md)** is the quality/risk source of truth and identifies the current release blockers. Planned capabilities are tracked in the **[100-item Windows Crash Doctor roadmap](docs/ROADMAP_100.md)**, while cross-repository engineering adaptations are tracked separately in the **[GitHub Borrow Roadmap](docs/GITHUB_BORROW_ROADMAP.md)**.
@@ -85,13 +86,20 @@ Open an elevated Windows PowerShell prompt in a trusted local checkout of the re
   -OutputDirectory C:\Evidence\DumpReport
 ```
 
-### 4. Run regression tests
+### 4. Run Network Doctor
+
+```powershell
+.\windows-crash-doctor\NetworkDoctor.ps1
+```
+
+### 5. Run regression tests
 
 ```powershell
 .\windows-crash-doctor\tests\self-test.ps1 -RepositoryMode
 .\windows-crash-doctor\tests\telemetry-self-test.ps1
 .\windows-crash-doctor\tests\dump-parser-test.ps1
 .\windows-crash-doctor\tests\integration-self-test.ps1 -RepositoryMode
+.\windows-crash-doctor\NetworkDoctor.ps1 -SelfTest
 ```
 
 Treat the required workflow as the product-health signal; the presence of a built EXE by itself does not prove the engine and desktop are release-ready.
@@ -113,7 +121,8 @@ The rule engine understands evidence relevant to this case, including:
 - Kernel-Power Event 41;
 - volmgr Event 161;
 - HWiNFO-style sensor CSV telemetry and sustained memory pressure;
-- current-window System Power Report abnormal-shutdown evidence.
+- current-window System Power Report abnormal-shutdown evidence;
+- network path evidence including active adapter/DHCP state, APIPA, duplicate-IP Event 4199 history, ARP/neighbour patterns, gateway reachability, configured-vs-direct DNS, loopback DNS/filter ownership, HTTPS over IPv4/IPv6, TCP 443, proxy/hosts settings, VPN/filter services and stale static profiles.
 
 Each finding keeps **severity**, **confidence**, **evidence**, **interpretation** and **next step** separate.
 
@@ -129,6 +138,7 @@ It does **not** silently flash firmware, remove drivers, disable security, chang
 | [`windows-crash-doctor/README.md`](windows-crash-doctor/README.md) | Crash Doctor engine usage and behaviour |
 | [`docs/OPEN_SOURCE_INTEGRATIONS.md`](docs/OPEN_SOURCE_INTEGRATIONS.md) | Open-source provider architecture |
 | [`docs/WINDOWS_CRASH_DOCTOR_PLAN.md`](docs/WINDOWS_CRASH_DOCTOR_PLAN.md) | Product architecture and design |
+| [`docs/NETWORK_DOCTOR.md`](docs/NETWORK_DOCTOR.md) | Network Doctor architecture, checks, safety boundary and learned cases |
 | [`docs/GITHUB_BORROW_ROADMAP.md`](docs/GITHUB_BORROW_ROADMAP.md) | Adapt reusable diagnostics/reliability/security patterns from Josh's other repositories |
 | [`docs/COMPARABLE_TOOLS_RESEARCH.md`](docs/COMPARABLE_TOOLS_RESEARCH.md) | Comparator-tool research |
 | [`docs/ROADMAP_100.md`](docs/ROADMAP_100.md) | Canonical 100-item capability backlog |

@@ -26,6 +26,8 @@ public partial class MainWindow : Window
     private string? _latestEvidencePath;
     private bool _metricsBusy;
     private bool _diagnosisRunning;
+    private bool _networkRunning;
+    private string? _latestNetworkReportPath;
     private CancellationTokenSource? _sensorCts;
 
     public MainWindow(bool autoRun)
@@ -310,6 +312,186 @@ public partial class MainWindow : Window
 
     private async void RunFullDiagnosis_Click(object sender, RoutedEventArgs e) => await RunFullDiagnosisAsync();
 
+
+    private void AppendNetworkLog(string line)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            var safe = _redaction.RedactForLog(line);
+            NetworkLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {safe}{Environment.NewLine}");
+            NetworkLog.ScrollToEnd();
+        });
+    }
+
+    private async Task RunNetworkDoctorAsync()
+    {
+        if (_networkRunning) return;
+
+        _networkRunning = true;
+        RunNetworkDoctorButton.IsEnabled = false;
+        RefreshNetworkButton.IsEnabled = false;
+        NetworkLog.Clear();
+        NetworkProgress.Value = 8;
+        NetworkStatusText.Text = "Checking adapters, DHCP and addressing…";
+        NetworkSummaryText.Text = "Running network diagnosis…";
+        NetworkNextStepText.Text = "Collecting evidence.";
+        MainTabs.SelectedIndex = 6;
+        SetPage("Network Doctor", "Automatic DHCP, duplicate-IP, DNS, HTTPS and browser-vs-network triage");
+
+        try
+        {
+            _engine.EnsureExtracted();
+            AppendNetworkLog("Network Doctor started.");
+            AppendNetworkLog("Read-only diagnosis: no DNS, DHCP, proxy, VPN or security settings will be changed.");
+
+            var before = new DirectoryInfo(_outputRoot)
+                .GetDirectories("Network-*")
+                .Select(d => d.FullName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            NetworkProgress.Value = 25;
+            NetworkStatusText.Text = "Testing gateway, DNS and public connectivity…";
+
+            var result = await _powerShell.RunFileAsync(
+                _engine.NetworkDoctorPath,
+                new[] { "-Mode", "Diagnose", "-OutputDirectory", _outputRoot },
+                AppendNetworkLog,
+                options: new ProcessRunOptions(TimeSpan.FromMinutes(2), OperationId: "network-doctor"));
+
+            if (!result.Succeeded)
+                throw new InvalidOperationException($"Network Doctor ended as {result.Status}: {result.FailureReason}");
+
+            NetworkProgress.Value = 82;
+            NetworkStatusText.Text = "Reading diagnosis…";
+
+            var candidates = new DirectoryInfo(_outputRoot)
+                .GetDirectories("Network-*")
+                .OrderByDescending(d => d.LastWriteTimeUtc)
+                .ToList();
+
+            var run = candidates.FirstOrDefault(d => !before.Contains(d.FullName))
+                ?? candidates.FirstOrDefault();
+
+            if (run is null)
+                throw new InvalidOperationException("Network Doctor completed but no report folder was created.");
+
+            var jsonPath = Path.Combine(run.FullName, "network-doctor-report.json");
+            var mdPath = Path.Combine(run.FullName, "network-doctor-report.md");
+            if (!File.Exists(jsonPath))
+                throw new FileNotFoundException("Network Doctor JSON report was not created.", jsonPath);
+
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(jsonPath));
+            var root = document.RootElement;
+            var classification = root.TryGetProperty("classification", out var classificationNode)
+                ? classificationNode.GetString() ?? "Network diagnosis complete"
+                : "Network diagnosis complete";
+            var summary = root.TryGetProperty("summary", out var summaryNode)
+                ? summaryNode.GetString() ?? string.Empty
+                : string.Empty;
+            var next = root.TryGetProperty("nextAction", out var nextNode)
+                ? nextNode.GetString() ?? "Review the report."
+                : "Review the report.";
+
+            NetworkSummaryText.Text = string.IsNullOrWhiteSpace(summary)
+                ? classification
+                : $"{classification}{Environment.NewLine}{summary}";
+            NetworkNextStepText.Text = next;
+            _latestNetworkReportPath = File.Exists(mdPath) ? mdPath : run.FullName;
+            OpenNetworkReportButton.IsEnabled = true;
+            NetworkProgress.Value = 100;
+            NetworkStatusText.Text = "Complete";
+            AppendNetworkLog("Network Doctor completed.");
+            AppendNetworkLog($"Report: {_latestNetworkReportPath}");
+        }
+        catch (Exception ex)
+        {
+            NetworkStatusText.Text = "Network diagnosis did not complete";
+            NetworkSummaryText.Text = "Network Doctor could not complete the run.";
+            NetworkNextStepText.Text = _redaction.RedactForLog(ex.Message);
+            AppendNetworkLog("FAILED: " + ex.Message);
+        }
+        finally
+        {
+            RunNetworkDoctorButton.IsEnabled = true;
+            RefreshNetworkButton.IsEnabled = true;
+            _networkRunning = false;
+        }
+    }
+
+    private async void RunNetworkDoctor_Click(object sender, RoutedEventArgs e) => await RunNetworkDoctorAsync();
+
+    private async void RefreshNetwork_Click(object sender, RoutedEventArgs e)
+    {
+        if (_networkRunning) return;
+
+        _networkRunning = true;
+        RunNetworkDoctorButton.IsEnabled = false;
+        RefreshNetworkButton.IsEnabled = false;
+        var refreshSucceeded = false;
+
+        try
+        {
+            _engine.EnsureExtracted();
+            NetworkStatusText.Text = "Refreshing DHCP + DNS…";
+            AppendNetworkLog("Refresh requested: flush DNS cache and renew the active DHCP lease only if that adapter already uses DHCP.");
+
+            if (IsAdministrator())
+            {
+                var result = await _powerShell.RunFileAsync(
+                    _engine.NetworkDoctorPath,
+                    new[] { "-Mode", "Refresh", "-OutputDirectory", _outputRoot },
+                    AppendNetworkLog,
+                    options: new ProcessRunOptions(TimeSpan.FromMinutes(1), OperationId: "network-refresh"));
+                if (!result.Succeeded)
+                    throw new InvalidOperationException($"Network refresh ended as {result.Status}: {result.FailureReason}");
+            }
+            else
+            {
+                var psi = new ProcessStartInfo("powershell.exe")
+                {
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{_engine.NetworkDoctorPath}\" -Mode Refresh -OutputDirectory \"{_outputRoot}\""
+                };
+                using var process = Process.Start(psi)
+                    ?? throw new InvalidOperationException("Unable to start the elevated network refresh.");
+                await process.WaitForExitAsync();
+                if (process.ExitCode != 0)
+                    throw new InvalidOperationException($"Elevated network refresh exited with code {process.ExitCode}.");
+            }
+
+            refreshSucceeded = true;
+            AppendNetworkLog("Refresh completed.");
+        }
+        catch (Exception ex)
+        {
+            NetworkStatusText.Text = "Refresh did not complete";
+            AppendNetworkLog("REFRESH FAILED: " + ex.Message);
+        }
+        finally
+        {
+            _networkRunning = false;
+            RunNetworkDoctorButton.IsEnabled = true;
+            RefreshNetworkButton.IsEnabled = true;
+        }
+
+        if (refreshSucceeded)
+        {
+            AppendNetworkLog("Re-running Network Doctor after refresh.");
+            await RunNetworkDoctorAsync();
+        }
+    }
+
+    private void OpenNetworkReport_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_latestNetworkReportPath))
+        {
+            MessageBox.Show(this, "Run Network Doctor first.", "Network Doctor", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        OpenPath(_latestNetworkReportPath);
+    }
+
     private void OpenLatestReport_Click(object sender, RoutedEventArgs e)
     {
         if (_latestEvidencePath is null)
@@ -567,4 +749,5 @@ public partial class MainWindow : Window
     private void HistoryNav_Click(object sender, RoutedEventArgs e) { MainTabs.SelectedIndex = 3; SetPage("Diagnostic History", "SQLite-backed runs and change summaries"); RefreshHistory(); }
     private void IntegrationsNav_Click(object sender, RoutedEventArgs e) { MainTabs.SelectedIndex = 4; SetPage("Integrations", "Optional providers with bounded retries and explicit health states"); _ = RefreshIntegrationsAsync(); }
     private void SettingsNav_Click(object sender, RoutedEventArgs e) { MainTabs.SelectedIndex = 5; SetPage("Settings", "Appearance, evidence storage and privacy"); }
+    private void NetworkNav_Click(object sender, RoutedEventArgs e) { MainTabs.SelectedIndex = 6; SetPage("Network Doctor", "Automatic DHCP, duplicate-IP, DNS, HTTPS and browser-vs-network triage"); }
 }

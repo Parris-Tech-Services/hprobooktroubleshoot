@@ -9,6 +9,14 @@ on:
       - 'windows-crash-doctor/**'
       - '.github/workflows/windows-crash-doctor-desktop.yml'
       - 'INSTALL-WINDOWS-CRASH-DOCTOR-GUI.cmd'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'scripts/**'
+      - 'windows-crash-doctor/**'
+      - 'docs/**'
+      - '.github/workflows/windows-crash-doctor-desktop.yml'
   workflow_dispatch:
 
 permissions:
@@ -72,6 +80,10 @@ jobs:
           .\windows-crash-doctor\tests\self-test.ps1 -RepositoryMode
           .\windows-crash-doctor\tests\telemetry-self-test.ps1
           .\windows-crash-doctor\tests\integration-self-test.ps1 -RepositoryMode
+
+      - name: Run Network Doctor classification self-test
+        shell: powershell
+        run: .\windows-crash-doctor\NetworkDoctor.ps1 -SelfTest
 
       - name: Run native dump regression tests
         shell: powershell

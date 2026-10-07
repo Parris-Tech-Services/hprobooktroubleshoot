@@ -16,11 +16,11 @@
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.3.0-preview.1</Version>
+    <Version>0.3.0-preview.2</Version>
     <FileVersion>0.3.0.0</FileVersion>
     <AssemblyVersion>0.3.0.0</AssemblyVersion>
-    <InformationalVersion Condition="'$(SourceRevisionId)' != ''">0.3.0-preview.1+$(SourceRevisionId)</InformationalVersion>
-    <InformationalVersion Condition="'$(SourceRevisionId)' == ''">0.3.0-preview.1+local</InformationalVersion>
+    <InformationalVersion Condition="'$(SourceRevisionId)' != ''">0.3.0-preview.2+$(SourceRevisionId)</InformationalVersion>
+    <InformationalVersion Condition="'$(SourceRevisionId)' == ''">0.3.0-preview.2+local</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,6 +34,7 @@
     <EmbeddedResource Include="../../windows-crash-doctor/TelemetryAnalysis.psm1" LogicalName="WCD.Engine.windows-crash-doctor.TelemetryAnalysis.psm1" />
     <EmbeddedResource Include="../../windows-crash-doctor/DumpParser.psm1" LogicalName="WCD.Engine.windows-crash-doctor.DumpParser.psm1" />
     <EmbeddedResource Include="../../windows-crash-doctor/Invoke-CrashDoctor.ps1" LogicalName="WCD.Engine.windows-crash-doctor.Invoke-CrashDoctor.ps1" />
+    <EmbeddedResource Include="../../windows-crash-doctor/NetworkDoctor.ps1" LogicalName="WCD.Engine.windows-crash-doctor.NetworkDoctor.ps1" />
     <EmbeddedResource Include="../../windows-crash-doctor/DiagnosticRegistry.psm1" LogicalName="WCD.Engine.windows-crash-doctor.DiagnosticRegistry.psm1" />
     <EmbeddedResource Include="../../windows-crash-doctor/diagnostics/registry.json" LogicalName="WCD.Engine.windows-crash-doctor.diagnostics.registry.json" />
     <EmbeddedResource Include="../../windows-crash-doctor/Integrations.psm1" LogicalName="WCD.Engine.windows-crash-doctor.Integrations.psm1" />
