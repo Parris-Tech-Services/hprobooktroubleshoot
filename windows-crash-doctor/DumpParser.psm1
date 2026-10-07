@@ -5,6 +5,11 @@ if (Test-Path -LiteralPath $symbolModule -PathType Leaf) {
     Import-Module $symbolModule -Force
 }
 
+$debuggerModule = Join-Path $PSScriptRoot 'DebuggerBackend.psm1'
+if (Test-Path -LiteralPath $debuggerModule -PathType Leaf) {
+    Import-Module $debuggerModule -Force
+}
+
 $script:MiniDumpSignature = 0x504d444d # 'MDMP'
 $script:KernelDumpSignature = 0x45474150 # 'PAGE'
 $script:KernelDumpValid32 = 0x504d5544 # 'DUMP'
@@ -1262,19 +1267,11 @@ function Read-CrashDoctorMiniDump {
 
     $exceptionAddress = if ($exception) { $exception.ExceptionAddress } else { $null }
     $bugCheckAnalysis = Get-CrashDoctorBugCheckAnalysis -BugCheckCode $exceptionCode -Parameters $exceptionParams -FaultingModule $faultingModule -ExceptionAddress $exceptionAddress -Architecture $dumpArch
-    $callStacks = @(Get-CrashDoctorThreadCallStacks -Stream $Stream -Threads $threads -Modules $modules -FaultingThreadId $faultingThreadId -Architecture $dumpArch)
+
+    # Heuristic raw-stack candidates are useful evidence, but they are not true unwound call stacks.
+    $heuristicThreadStacks = @(Get-CrashDoctorThreadCallStacks -Stream $Stream -Threads $threads -Modules $modules -FaultingThreadId $faultingThreadId -Architecture $dumpArch)
+    $callStacks = @()
     $faultingCallStack = $null
-    if ($callStacks.Count -gt 0) {
-        foreach ($cs in $callStacks) {
-            if ($null -ne $cs -and ($cs.PSObject.Properties.Name -contains 'IsFaultingThread') -and $cs.IsFaultingThread) {
-                $faultingCallStack = $cs
-                break
-            }
-        }
-        if ($null -eq $faultingCallStack -and ($callStacks[0] -is [System.Management.Automation.PSObject])) {
-            $faultingCallStack = $callStacks[0]
-        }
-    }
 
     return [pscustomobject][ordered]@{
         SchemaVersion = '1.0'
@@ -1297,6 +1294,10 @@ function Read-CrashDoctorMiniDump {
         BugCheckAnalysis = $bugCheckAnalysis
         FaultingCallStack = $faultingCallStack
         CallStacks = @($callStacks)
+        HeuristicThreadStacks = @($heuristicThreadStacks)
+        CallStackMethod = 'None'
+        TrueUnwindAvailable = $false
+        DebuggerAnalysis = $null
         ModuleCount = @($modules).Count
         Modules = @($modules)
         ThreadCount = $threadCount
@@ -1306,7 +1307,7 @@ function Read-CrashDoctorMiniDump {
         Memory64 = $memory64
         MemoryInfo = $memoryInfo
         Streams = $directories.ToArray()
-        ParseCoverage = 'Header, stream directory, system info, exception, bugcheck analysis, modules, call stacks, thread stack drivers and memory summaries'
+        ParseCoverage = 'Header, stream directory, system info, exception, bugcheck analysis, modules, heuristic thread-stack candidates, thread stack drivers and memory summaries'
     }
 }
 
@@ -1432,7 +1433,10 @@ function Read-CrashDoctorKernelDump32 {
 function Get-CrashDoctorDumpInfo {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)] [string]$Path
+        [Parameter(Mandatory = $true)] [string]$Path,
+        [switch]$UseDebugger,
+        [string]$SymbolCachePath,
+        [int]$DebuggerTimeoutSeconds = 180
     )
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -1453,21 +1457,47 @@ function Get-CrashDoctorDumpInfo {
         $validDump = Get-CrashDoctorUInt32 -Bytes $prefix -Offset 4
 
         if ($signature -eq $script:MiniDumpSignature) {
-            return Read-CrashDoctorMiniDump -Stream $stream -ResolvedPath $resolved
+            $report = Read-CrashDoctorMiniDump -Stream $stream -ResolvedPath $resolved
         }
-        if ($signature -eq $script:KernelDumpSignature -and $validDump -eq $script:KernelDumpValid64) {
-            return Read-CrashDoctorKernelDump64 -Stream $stream -ResolvedPath $resolved
+        elseif ($signature -eq $script:KernelDumpSignature -and $validDump -eq $script:KernelDumpValid64) {
+            $report = Read-CrashDoctorKernelDump64 -Stream $stream -ResolvedPath $resolved
         }
-        if ($signature -eq $script:KernelDumpSignature -and $validDump -eq $script:KernelDumpValid32) {
-            return Read-CrashDoctorKernelDump32 -Stream $stream -ResolvedPath $resolved
+        elseif ($signature -eq $script:KernelDumpSignature -and $validDump -eq $script:KernelDumpValid32) {
+            $report = Read-CrashDoctorKernelDump32 -Stream $stream -ResolvedPath $resolved
         }
-
-        $ascii = [Text.Encoding]::ASCII.GetString($prefix)
-        throw "Unsupported or unrecognized dump format. First 8 bytes: '$ascii'."
+        else {
+            $ascii = [Text.Encoding]::ASCII.GetString($prefix)
+            throw "Unsupported or unrecognized dump format. First 8 bytes: '$ascii'."
+        }
     }
     finally {
         $stream.Dispose()
     }
+
+    if ($UseDebugger) {
+        if (-not (Get-Command Invoke-CrashDoctorDebuggerAnalysis -ErrorAction SilentlyContinue)) {
+            throw 'Debugger analysis was requested but DebuggerBackend.psm1 is unavailable.'
+        }
+
+        $debugger = Invoke-CrashDoctorDebuggerAnalysis -DumpPath $resolved -SymbolCachePath $SymbolCachePath -TimeoutSeconds $DebuggerTimeoutSeconds
+        $report.DebuggerAnalysis = $debugger
+        if ($debugger.Success -and $debugger.IsTrueUnwind) {
+            $report.CallStacks = @($debugger.CallStacks)
+            $report.CallStackMethod = 'Cdb/DbgEng'
+            $report.TrueUnwindAvailable = $true
+            $faulting = @($debugger.CallStacks | Where-Object { $_.IsFaultingThread } | Select-Object -First 1)
+            if ($faulting.Count -eq 0 -and $debugger.CallStacks.Count -gt 0) {
+                $faulting = @($debugger.CallStacks[0])
+            }
+            $report.FaultingCallStack = if ($faulting.Count -gt 0) { $faulting[0] } else { $null }
+
+            if ($report.PSObject.Properties.Name -contains 'BugCheckAnalysis' -and $report.BugCheckAnalysis -and $debugger.FailureBucket) {
+                $report.BugCheckAnalysis.FailureBucket = $debugger.FailureBucket
+            }
+        }
+    }
+
+    return $report
 }
 
 function Get-CrashDoctorSystemCrashHistory {
