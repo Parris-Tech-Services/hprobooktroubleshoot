@@ -1,16 +1,7 @@
 name: Windows Crash Doctor QA
 
 on:
-  push:
-    paths:
-      - 'windows-crash-doctor/**'
-      - 'scripts/**'
-      - '.github/workflows/windows-crash-doctor.yml'
-  pull_request:
-    paths:
-      - 'windows-crash-doctor/**'
-      - 'scripts/**'
-      - '.github/workflows/windows-crash-doctor.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
